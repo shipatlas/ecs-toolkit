@@ -75,10 +75,9 @@ func initConfig() {
 	log.Info().Msgf("using config file: %s", rootCmdOptions.configFile)
 
 	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		log.Info().Msgf("loaded %s config file", viper.ConfigFileUsed())
-	} else {
-		log.Fatal().Err(err).Msgf("unable to load %s config file", viper.ConfigFileUsed())
+	log.Info().Msgf("reading %s config file", viper.ConfigFileUsed())
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatal().Err(err).Msgf("unable to read %s config file", viper.ConfigFileUsed())
 	}
 }
 
