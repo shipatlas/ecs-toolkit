@@ -1,0 +1,10 @@
+---
+version: v1
+application:
+  tasks:
+    - name: hub-asset-sync
+    - name: hub-database-migrate
+  services:
+    - name: hub-web-server
+    - name: hub-worker
+    - name: hub-worker-scheduler
