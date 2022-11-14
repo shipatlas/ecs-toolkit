@@ -5,8 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/shipatlas/ecs-toolkit/pkg"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,6 +18,8 @@ type rootOptions struct {
 	configFile string
 	logLevel   string
 }
+
+var Config = pkg.Config{}
 
 var (
 	rootCmdLong = utils.LongDesc(`
@@ -75,10 +79,29 @@ func initConfig() {
 	log.Info().Msgf("using config file: %s", rootCmdOptions.configFile)
 
 	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		log.Info().Msgf("loaded config file: %s", viper.ConfigFileUsed())
-	} else {
-		log.Fatal().Err(err).Msgf("unable to load config file: %s", viper.ConfigFileUsed())
+	log.Info().Msgf("reading %s config file", viper.ConfigFileUsed())
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatal().Err(err).Msgf("unable to read %s config file", viper.ConfigFileUsed())
+	}
+
+	log.Info().Msg("parsing config file")
+	if err := viper.Unmarshal(&Config); err != nil {
+		log.Fatal().Err(err).Msg("unable to parse config file")
+	}
+
+	log.Info().Msg("validating config file")
+	validate := validator.New()
+	err := validate.Struct(&Config)
+	if err != nil {
+		if _, ok := err.(*validator.InvalidValidationError); ok {
+			log.Error().Msg(strings.ToLower(err.Error()))
+		}
+
+		for _, err := range err.(validator.ValidationErrors) {
+			log.Error().Msg(strings.ToLower(err.Error()))
+		}
+
+		log.Fatal().Msg("unable to validate config file")
 	}
 }
 
