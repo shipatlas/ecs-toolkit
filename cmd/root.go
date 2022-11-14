@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/shipatlas/ecs-toolkit/pkg"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,6 +17,8 @@ type rootOptions struct {
 	configFile string
 	logLevel   string
 }
+
+var Config = pkg.Config{}
 
 var (
 	rootCmdLong = utils.LongDesc(`
@@ -78,6 +81,11 @@ func initConfig() {
 	log.Info().Msgf("reading %s config file", viper.ConfigFileUsed())
 	if err := viper.ReadInConfig(); err != nil {
 		log.Fatal().Err(err).Msgf("unable to read %s config file", viper.ConfigFileUsed())
+	}
+
+	log.Info().Msg("parsing config file")
+	if err := viper.Unmarshal(&Config); err != nil {
+		log.Fatal().Err(err).Msg("unable to parse config file")
 	}
 }
 
