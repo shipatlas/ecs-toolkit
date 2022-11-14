@@ -19,7 +19,6 @@ package utils
 import (
 	"strings"
 
-	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +29,7 @@ func LongDesc(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	return normalizer{s}.heredoc().trim().string
+	return normalizer{s}.trim().string
 }
 
 // Examples normalizes a command's examples to follow the conventions.
@@ -65,11 +64,6 @@ func NormalizeAll(cmd *cobra.Command) *cobra.Command {
 
 type normalizer struct {
 	string
-}
-
-func (s normalizer) heredoc() normalizer {
-	s.string = heredoc.Doc(s.string)
-	return s
 }
 
 func (s normalizer) trim() normalizer {
