@@ -1,9 +1,12 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -11,6 +14,7 @@ import (
 
 type rootOptions struct {
 	configFile string
+	logLevel   string
 }
 
 var (
@@ -19,7 +23,10 @@ var (
 
 	rootCmdExamples = utils.Examples(`
 		# Set the configuration file to use
-		ecs-toolkit --config=/some/other/path/.ecs-toolkit.yml`)
+		ecs-toolkit --config=/some/other/path/.ecs-toolkit.yml
+		
+		# Set the logging level i.e. in order: trace, debug, info, warn, error, fatal, panic
+		ecs-toolkit --log-level=debug`)
 
 	rootCmdOptions = &rootOptions{}
 )
@@ -40,15 +47,17 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
+		log.Error().Err(err).Msg("")
 		os.Exit(1)
 	}
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(initLogging, initConfig)
 
 	// Persistent flags, which, will be global for the application.
 	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.configFile, "config", "c", ".ecs-toolkit.yml", "path to configuration file")
+	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.logLevel, "log-level", "l", "warn", "logging level i.e. "+strings.Join(utils.LogLevels, "|"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -63,9 +72,17 @@ func initConfig() {
 		viper.SetConfigType("yml")
 		viper.SetConfigName(".ecs-toolkit")
 	}
+	log.Info().Msgf("using config file: %s", rootCmdOptions.configFile)
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
+		log.Info().Msgf("loaded config file: %s", viper.ConfigFileUsed())
+	} else {
+		log.Fatal().Err(err).Msgf("unable to load config file: %s", viper.ConfigFileUsed())
 	}
+}
+
+func initLogging() {
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
+	utils.SetLogLevel(rootCmdOptions.logLevel)
 }
