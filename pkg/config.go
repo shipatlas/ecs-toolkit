@@ -1,8 +1,8 @@
 package pkg
 
 type Config struct {
-	Version     *string      `mapstructure:"version"`
-	Application *Application `mapstructure:"application"`
+	Version     *string      `mapstructure:"version" validate:"required"`
+	Application *Application `mapstructure:"application" validate:"required"`
 }
 
 type Application struct {
@@ -11,9 +11,9 @@ type Application struct {
 }
 
 type Service struct {
-	Name *string `mapstructure:"name"`
+	Name *string `mapstructure:"name" validate:"required"`
 }
 
 type Task struct {
-	Name *string `mapstructure:"name"`
+	Name *string `mapstructure:"name" validate:"required"`
 }

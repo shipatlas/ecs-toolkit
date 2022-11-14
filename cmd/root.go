@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/shipatlas/ecs-toolkit/pkg"
@@ -86,6 +87,21 @@ func initConfig() {
 	log.Info().Msg("parsing config file")
 	if err := viper.Unmarshal(&Config); err != nil {
 		log.Fatal().Err(err).Msg("unable to parse config file")
+	}
+
+	log.Info().Msg("validating config file")
+	validate := validator.New()
+	err := validate.Struct(&Config)
+	if err != nil {
+		if _, ok := err.(*validator.InvalidValidationError); ok {
+			log.Error().Msg(strings.ToLower(err.Error()))
+		}
+
+		for _, err := range err.(validator.ValidationErrors) {
+			log.Error().Msg(strings.ToLower(err.Error()))
+		}
+
+		log.Fatal().Msg("unable to validate config file")
 	}
 }
 
