@@ -1,4 +1,4 @@
-module github.com/shipatlas/ecs-deployer
+module github.com/shipatlas/ecs-toolkit
 
 go 1.19
 
