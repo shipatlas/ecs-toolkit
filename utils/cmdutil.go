@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/MakeNowJust/heredoc"
-	"github.com/russross/blackfriday"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +30,7 @@ func LongDesc(s string) string {
 	if len(s) == 0 {
 		return s
 	}
-	return normalizer{s}.heredoc().markdown().trim().string
+	return normalizer{s}.heredoc().trim().string
 }
 
 // Examples normalizes a command's examples to follow the conventions.
@@ -66,13 +65,6 @@ func NormalizeAll(cmd *cobra.Command) *cobra.Command {
 
 type normalizer struct {
 	string
-}
-
-func (s normalizer) markdown() normalizer {
-	bytes := []byte(s.string)
-	formatted := blackfriday.Markdown(bytes, &ASCIIRenderer{Indentation: Indentation}, blackfriday.EXTENSION_NO_INTRA_EMPHASIS)
-	s.string = string(formatted)
-	return s
 }
 
 func (s normalizer) heredoc() normalizer {
