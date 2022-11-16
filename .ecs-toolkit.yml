@@ -1,6 +1,7 @@
 ---
 version: v1
 application:
+  cluster: shipatlas
   tasks:
     - name: hub-asset-sync
     - name: hub-database-migrate

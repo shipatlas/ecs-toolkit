@@ -6,6 +6,7 @@ type Config struct {
 }
 
 type Application struct {
+	Cluster  *string    `mapstructure:"cluster" validate:"required"`
 	Services []*Service `mapstructure:"services"`
 	Tasks    []*Task    `mapstructure:"tasks"`
 }
