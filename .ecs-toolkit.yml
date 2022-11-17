@@ -1,10 +1,20 @@
 ---
 version: v1
-application:
-  tasks:
-    - name: hub-asset-sync
-    - name: hub-database-migrate
-  services:
-    - name: hub-web-server
-    - name: hub-worker
-    - name: hub-worker-scheduler
+cluster: shipatlas
+tasks:
+  - name: hub-asset-sync
+    containers:
+      - asset-sync
+  - name: hub-database-migrate
+    containers:
+      - rails
+services:
+  - name: hub-web-server
+    containers:
+      - rails
+  - name: hub-worker
+    containers:
+      - resque
+  - name: hub-worker-scheduler
+    containers:
+      - resque-scheduler
