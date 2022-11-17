@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.19.0
 	github.com/go-playground/validator/v10 v10.11.1
 	github.com/novln/docker-parser v1.0.0
-	github.com/rs/zerolog v1.28.0
+	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.14.0
 )
@@ -32,8 +32,6 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
-	github.com/mattn/go-colorable v0.1.12 // indirect
-	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect

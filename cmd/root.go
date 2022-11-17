@@ -3,15 +3,14 @@ package cmd
 import (
 	"os"
 	"strings"
-	"time"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/shipatlas/ecs-toolkit/pkg"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type rootOptions struct {
@@ -51,7 +50,7 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		log.Error().Err(err).Msg("")
+		log.Error(err)
 		os.Exit(1)
 	}
 }
@@ -76,36 +75,35 @@ func initConfig() {
 		viper.SetConfigType("yml")
 		viper.SetConfigName(".ecs-toolkit")
 	}
-	log.Info().Msgf("using config file: %s", rootCmdOptions.configFile)
+	log.Infof("using config file: %s", rootCmdOptions.configFile)
 
 	// If a config file is found, read it in.
-	log.Info().Msgf("reading %s config file", viper.ConfigFileUsed())
+	log.Infof("reading %s config file", viper.ConfigFileUsed())
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal().Err(err).Msgf("unable to read %s config file", viper.ConfigFileUsed())
+		log.Fatalf("unable to read %s config file: %v", viper.ConfigFileUsed(), err)
 	}
 
-	log.Info().Msg("parsing config file")
+	log.Info("parsing config file")
 	if err := viper.Unmarshal(&toolConfig); err != nil {
-		log.Fatal().Err(err).Msg("unable to parse config file")
+		log.Fatalf("unable to parse config file: %v", err)
 	}
 
-	log.Info().Msg("validating config file")
+	log.Info("validating config file")
 	validate := validator.New()
 	err := validate.Struct(&toolConfig)
 	if err != nil {
 		if _, ok := err.(*validator.InvalidValidationError); ok {
-			log.Error().Msg(strings.ToLower(err.Error()))
+			log.Error(strings.ToLower(err.Error()))
 		}
 
 		for _, err := range err.(validator.ValidationErrors) {
-			log.Error().Msg(strings.ToLower(err.Error()))
+			log.Error(strings.ToLower(err.Error()))
 		}
 
-		log.Fatal().Msg("unable to validate config file")
+		log.Fatal("unable to validate config file")
 	}
 }
 
 func initLogging() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 	utils.SetLogLevel(rootCmdOptions.logLevel)
 }
