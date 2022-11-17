@@ -1,6 +1,11 @@
 package cmd
 
 import (
+	"context"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/rs/zerolog/log"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
 )
@@ -28,6 +33,7 @@ var deployCmd = &cobra.Command{
 	Example: deployCmdExamples,
 	Run: func(cmd *cobra.Command, args []string) {
 		deployCmdOptions.validate()
+		deployCmdOptions.run()
 	},
 }
 
@@ -45,4 +51,14 @@ func (options *deployOptions) validate() {
 	if options.imageTag == "" {
 		log.Fatal().Msg("image-tag flag must be set and should not be blank")
 	}
+}
+
+func (options *deployOptions) run() {
+	awsCfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		log.Fatal().Err(err).Msg("unable to load aws config")
+	}
+	client := ecs.NewFromConfig(awsCfg)
+
+	toolConfig.DeployServices(&options.imageTag, client)
 }
