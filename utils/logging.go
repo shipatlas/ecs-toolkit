@@ -1,8 +1,7 @@
 package utils
 
 import (
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -14,22 +13,22 @@ var (
 func SetLogLevel(level string) {
 	switch level {
 	case "trace":
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		log.SetLevel(log.TraceLevel)
 	case "debug":
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		log.SetLevel(log.DebugLevel)
 	case "info":
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		log.SetLevel(log.InfoLevel)
 	case "warn":
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+		log.SetLevel(log.WarnLevel)
 	case "error":
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+		log.SetLevel(log.ErrorLevel)
 	case "fatal":
-		zerolog.SetGlobalLevel(zerolog.FatalLevel)
+		log.SetLevel(log.FatalLevel)
 	case "panic":
-		zerolog.SetGlobalLevel(zerolog.PanicLevel)
+		log.SetLevel(log.PanicLevel)
 	default:
-		log.Fatal().Msg("invalid logging level")
+		log.Fatal("invalid logging level")
 	}
 
-	log.Debug().Msgf("log level set to %s", level)
+	log.Debugf("log level set to %s", level)
 }

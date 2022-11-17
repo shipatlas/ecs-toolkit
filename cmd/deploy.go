@@ -5,9 +5,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/rs/zerolog/log"
+	"github.com/aws/smithy-go/logging"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type deployOptions struct {
@@ -49,14 +51,23 @@ func init() {
 
 func (options *deployOptions) validate() {
 	if options.imageTag == "" {
-		log.Fatal().Msg("image-tag flag must be set and should not be blank")
+		log.Fatal("image-tag flag must be set and should not be blank")
 	}
 }
 
 func (options *deployOptions) run() {
-	awsCfg, err := config.LoadDefaultConfig(context.TODO())
+	awsLogger := logging.LoggerFunc(func(classification logging.Classification, format string, v ...interface{}) {
+		switch classification {
+		case logging.Debug:
+			log.Debug(format)
+		case logging.Warn:
+			log.Warn(format)
+		}
+	})
+
+	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithLogger(awsLogger))
 	if err != nil {
-		log.Fatal().Err(err).Msg("unable to load aws config")
+		log.Fatalf("unable to load aws config: %v", err)
 	}
 	client := ecs.NewFromConfig(awsCfg)
 

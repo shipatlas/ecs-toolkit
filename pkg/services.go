@@ -8,17 +8,16 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 
 	dockerparser "github.com/novln/docker-parser"
+	log "github.com/sirupsen/logrus"
 )
 
 func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.Client) {
-	clusterSublogger := log.With().
-		Str("cluster", *config.Cluster).
-		Logger()
-	clusterSublogger.Info().Msg("starting deployment of services")
+	clusterSublogger := log.WithFields(log.Fields{
+		"cluster": *config.Cluster,
+	})
+	clusterSublogger.Info("starting deployment of services")
 
 	// Prepare service mapping for easy lookup later, basically create a map
 	// with the service name as the key and the service as the value in the
@@ -32,21 +31,21 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	// there are no services to update.
 	configServiceNames := config.ServiceNames()
 	if len(configServiceNames) == 0 {
-		clusterSublogger.Warn().Msg("skipping deployment of services, none found")
+		clusterSublogger.Warn("skipping deployment of services, none found")
 
 		return
 	}
 
 	// Fetch full profiles of the services so that later we can reference their
 	// attributes e.g. their task definitions.
-	clusterSublogger.Info().Msgf("fetching service profiles: %s", strings.Join(configServiceNames, ", "))
+	clusterSublogger.Infof("fetching service profiles: %s", strings.Join(configServiceNames, ", "))
 	servicesParams := &ecs.DescribeServicesInput{
 		Cluster:  config.Cluster,
 		Services: configServiceNames,
 	}
 	servicesResult, err := client.DescribeServices(context.TODO(), servicesParams)
 	if err != nil {
-		clusterSublogger.Fatal().Err(err).Msg("unable to fetch service profiles")
+		clusterSublogger.Fatalf("unable to fetch service profiles: %v", err)
 	}
 
 	// It's not guaranteed that all the services listed exist on the cluster so
@@ -58,7 +57,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 
 	// If there are no services in the cluster then we should bail out.
 	if len(clusterServiceNames) == 0 {
-		clusterSublogger.Fatal().Msg("unable to proceed with deployment, services not found in the cluster")
+		clusterSublogger.Fatal("unable to proceed with deployment, services not found in the cluster")
 	}
 
 	// Raise warning if there's a mismatch in the services in the config and
@@ -66,20 +65,20 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	// just in case it's ever used further down.
 	if len(configServiceNames) > len(clusterServiceNames) {
 		servicesParams.Services = clusterServiceNames
-		clusterSublogger.Warn().Msgf("some services missing, limiting to: %s", strings.Join(clusterServiceNames, ", "))
+		clusterSublogger.Warnf("some services missing, limiting to: %s", strings.Join(clusterServiceNames, ", "))
 	}
 
 	// Loop through all services, fetch the latest task definition, make a new
 	// revision of it with updated image tags and finally update the service to
 	// use the new revision.
 	for _, service := range servicesResult.Services {
-		serviceSublogger := log.With().
-			Str("cluster", *config.Cluster).
-			Str("service", *service.ServiceName).
-			Logger()
+		serviceSublogger := log.WithFields(log.Fields{
+			"cluster": *config.Cluster,
+			"service": *service.ServiceName,
+		})
 
 		// Fetch full profile of the latest task definition.
-		serviceSublogger.Info().Msg("fetching service task definition profile")
+		serviceSublogger.Info("fetching service task definition profile")
 		taskDefinitionParams := &ecs.DescribeTaskDefinitionInput{
 			TaskDefinition: service.TaskDefinition,
 			Include: []types.TaskDefinitionField{
@@ -88,12 +87,12 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		}
 		taskDefinitionResult, err := client.DescribeTaskDefinition(context.TODO(), taskDefinitionParams)
 		if err != nil {
-			serviceSublogger.Fatal().Err(err).Msg("unable to fetch service task definition profile")
+			serviceSublogger.Fatalf("unable to fetch service task definition profile: %v", err)
 		}
 
 		// Copy details of the current task definition to use a foundation of a
 		// new revision.
-		serviceSublogger.Info().Msgf("building new task definition from %s:%d", *taskDefinitionResult.TaskDefinition.Family, taskDefinitionResult.TaskDefinition.Revision)
+		serviceSublogger.Infof("building new task definition from %s:%d", *taskDefinitionResult.TaskDefinition.Family, taskDefinitionResult.TaskDefinition.Revision)
 		registerTaskDefinitionParams := &ecs.RegisterTaskDefinitionInput{
 			ContainerDefinitions:    taskDefinitionResult.TaskDefinition.ContainerDefinitions,
 			Family:                  taskDefinitionResult.TaskDefinition.Family,
@@ -133,16 +132,16 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		taskDefinitionUpdated := false
 		for i, containerDefinition := range registerTaskDefinitionParams.ContainerDefinitions {
 			containerName := *containerDefinition.Name
-			containerSublogger := log.With().
-				Str("cluster", *config.Cluster).
-				Str("service", *service.ServiceName).
-				Str("container", containerName).
-				Logger()
+			containerSublogger := log.WithFields(log.Fields{
+				"cluster":   *config.Cluster,
+				"service":   *service.ServiceName,
+				"container": containerName,
+			})
 
 			// Only proceed to update container image tag if the container is on
 			// the list of containers to update.
 			if !serviceContainerUpdateable[containerName] {
-				containerSublogger.Warn().Msg("skipping container image tag update, not on the container list")
+				containerSublogger.Warn("skipping container image tag update, not on the container list")
 
 				continue
 			}
@@ -150,19 +149,19 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 			oldContainerImage := *containerDefinition.Image
 			parsedImage, err := dockerparser.Parse(oldContainerImage)
 			if err != nil {
-				containerSublogger.Fatal().Err(err).Msgf("unable to parse current container image: %s", oldContainerImage)
+				containerSublogger.Fatalf("unable to parse current container image %s: %v", oldContainerImage, err)
 			}
 			oldContainerImageTag := parsedImage.Tag()
 			newContainerImage := strings.Replace(oldContainerImage, oldContainerImageTag, *newContainerImageTag, 1)
-			containerSublogger.Debug().Msgf("container image registry: %s", parsedImage.Registry())
-			containerSublogger.Debug().Msgf("container image name: %s", parsedImage.ShortName())
-			containerSublogger.Info().Msgf("old container image tag: %s", oldContainerImageTag)
-			containerSublogger.Info().Msgf("new container image tag: %s", *newContainerImageTag)
+			containerSublogger.Debugf("container image registry: %s", parsedImage.Registry())
+			containerSublogger.Debugf("container image name: %s", parsedImage.ShortName())
+			containerSublogger.Infof("old container image tag: %s", oldContainerImageTag)
+			containerSublogger.Infof("new container image tag: %s", *newContainerImageTag)
 
 			// If the old and new image tags are the same then there's no need
 			// to update the image and consequently the task definition.
 			if oldContainerImageTag == *newContainerImageTag {
-				containerSublogger.Warn().Msg("skipping container image tag update, no changes")
+				containerSublogger.Warn("skipping container image tag update, no changes")
 
 				continue
 			}
@@ -172,25 +171,25 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		}
 
 		if !taskDefinitionUpdated {
-			serviceSublogger.Warn().Msg("skipping registering new task definition, no changes")
-			serviceSublogger.Warn().Msg("skipping service update, no changes")
+			serviceSublogger.Warn("skipping registering new task definition, no changes")
+			serviceSublogger.Warn("skipping service update, no changes")
 
 			continue
 		}
 
 		// Register a new updated version of the task definition i.e. with new
 		// container image tags.
-		serviceSublogger.Info().Msg("registering new task definition")
+		serviceSublogger.Info("registering new task definition")
 		registerTaskDefinitionResult, err := client.RegisterTaskDefinition(context.TODO(), registerTaskDefinitionParams)
 		if err != nil {
-			serviceSublogger.Fatal().Err(err).Msg("unable to register new task definition")
+			serviceSublogger.Fatalf("unable to register new task definition: %v", err)
 		}
 		newTaskDefinition := fmt.Sprintf("%s:%d", *registerTaskDefinitionResult.TaskDefinition.Family, registerTaskDefinitionResult.TaskDefinition.Revision)
-		serviceSublogger.Info().Msgf("successfully registered new task definition %s", newTaskDefinition)
+		serviceSublogger.Infof("successfully registered new task definition %s", newTaskDefinition)
 
 		// Update the service to use the new/latest revision of the task
 		// definition.
-		serviceSublogger.Info().Msg("update service to use new task definition")
+		serviceSublogger.Info("update service to use new task definition")
 		updateServiceParams := &ecs.UpdateServiceInput{
 			Service:                       service.ServiceName,
 			CapacityProviderStrategy:      service.CapacityProviderStrategy,
@@ -212,23 +211,23 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		}
 		_, err = client.UpdateService(context.TODO(), updateServiceParams)
 		if err != nil {
-			clusterSublogger.Fatal().Err(err).Msg("unable to update service to use new task definition")
+			clusterSublogger.Fatalf("unable to update service to use new task definition: %v", err)
 		}
-		serviceSublogger.Info().Msg("successfully updated service to use new task definition")
+		serviceSublogger.Info("successfully updated service to use new task definition")
 	}
 
 	// Make sure we wait for rollout of all services
-	clusterSublogger.Info().Msg("checking if all services are stable")
+	clusterSublogger.Info("checking if all services are stable")
 	waiter := ecs.NewServicesStableWaiter(client)
 	maxWaitTime := 15 * time.Minute
 	err = waiter.Wait(context.TODO(), servicesParams, maxWaitTime, func(o *ecs.ServicesStableWaiterOptions) {
 		o.MinDelay = 5 * time.Second
 		o.MaxDelay = 120 * time.Second
-		o.LogWaitAttempts = (zerolog.GlobalLevel() == zerolog.DebugLevel) || (zerolog.GlobalLevel() == zerolog.TraceLevel)
+		o.LogWaitAttempts = log.IsLevelEnabled(log.DebugLevel) || log.IsLevelEnabled(log.TraceLevel)
 	})
 	if err != nil {
-		clusterSublogger.Fatal().Err(err).Msg("unable to check if all services are stable")
+		clusterSublogger.Fatalf("unable to check if all services are stable: %v", err)
 
 	}
-	clusterSublogger.Info().Msg("completed deployment of services")
+	clusterSublogger.Info("completed deployment of services")
 }
