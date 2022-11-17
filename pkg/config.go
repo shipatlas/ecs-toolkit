@@ -18,3 +18,12 @@ type Task struct {
 	Containers []*string `mapstructure:"containers" validate:"required,min=1,dive"`
 	Force      *bool     `mapstructure:"force"`
 }
+
+func (config *Config) ServiceNames() []string {
+	serviceNames := []string{}
+	for _, service := range config.Services {
+		serviceNames = append(serviceNames, *service.Name)
+	}
+
+	return serviceNames
+}

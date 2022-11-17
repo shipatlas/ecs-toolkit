@@ -13,3 +13,9 @@ build:
 
 clean:
 	rm -rf ${BIN_DIR}
+
+lint:
+	golangci-lint run
+
+test:
+	go test -v ./...

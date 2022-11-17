@@ -19,7 +19,7 @@ type rootOptions struct {
 	logLevel   string
 }
 
-var Config = pkg.Config{}
+var toolConfig = pkg.Config{}
 
 var (
 	rootCmdLong = utils.LongDesc(`
@@ -85,13 +85,13 @@ func initConfig() {
 	}
 
 	log.Info().Msg("parsing config file")
-	if err := viper.Unmarshal(&Config); err != nil {
+	if err := viper.Unmarshal(&toolConfig); err != nil {
 		log.Fatal().Err(err).Msg("unable to parse config file")
 	}
 
 	log.Info().Msg("validating config file")
 	validate := validator.New()
-	err := validate.Struct(&Config)
+	err := validate.Struct(&toolConfig)
 	if err != nil {
 		if _, ok := err.(*validator.InvalidValidationError); ok {
 			log.Error().Msg(strings.ToLower(err.Error()))
