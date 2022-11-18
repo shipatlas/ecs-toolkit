@@ -50,27 +50,22 @@ you can specify an alternative using the `--config` flag. With that, it's easy
 to deploy your application using the `deploy` command. For example:
 
 ```console
-$ ecs-toolkit -l debug deploy --image-tag=49779134ca1dcef21f0b5123d3d5c2f4f47da650
-2022-11-17T18:48:15+02:00 DBG log level set to debug
-2022-11-17T18:48:15+02:00 INF using config file: .ecs-toolkit.yml
-2022-11-17T18:48:15+02:00 INF reading .ecs-toolkit.yml config file
-2022-11-17T18:48:15+02:00 INF parsing config file
-2022-11-17T18:48:15+02:00 INF validating config file
-2022-11-17T18:48:15+02:00 INF starting deployment of services cluster=shipatlas
-2022-11-17T18:48:15+02:00 INF fetching service profiles: hub-web-server, hub-worker, hub-worker-scheduler cluster=shipatlas
-2022-11-17T18:48:17+02:00 WRN some services missing, limiting to: hub-web-server cluster=shipatlas
-2022-11-17T18:48:17+02:00 INF fetching service task definition profile cluster=shipatlas service=hub-web-server
-2022-11-17T18:48:17+02:00 INF building new task definition from hub-web-server:98 cluster=shipatlas service=hub-web-server
-2022-11-17T18:48:17+02:00 DBG container image registry: 995655197720.dkr.ecr.us-east-1.amazonaws.com cluster=shipatlas container=rails service=hub-web-server
-2022-11-17T18:48:17+02:00 DBG container image name: shipatlas/hub cluster=shipatlas container=rails service=hub-web-server
-2022-11-17T18:48:17+02:00 INF old container image tag: 49779134ca1dcef21f0b5123d3d5c2f4f47da650 cluster=shipatlas container=rails service=hub-web-server
-2022-11-17T18:48:17+02:00 INF new container image tag: 49779134ca1dcef21f0b5123d3d5c2f4f47da650 cluster=shipatlas container=rails service=hub-web-server
-2022-11-17T18:48:17+02:00 WRN skipping container image tag update, no changes cluster=shipatlas container=rails service=hub-web-server
-2022-11-17T18:48:17+02:00 WRN skipping registering new task definition, no changes cluster=shipatlas service=hub-web-server
-2022-11-17T18:48:17+02:00 WRN skipping service update, no changes cluster=shipatlas service=hub-web-server
-2022-11-17T18:48:17+02:00 INF checking if all services are stable cluster=shipatlas
-SDK 2022/11/17 18:48:17 DEBUG attempting waiter request, attempt count: 1
-2022-11-17T18:48:17+02:00 INF completed deployment of services cluster=shipatlas
+$ ecs-toolkit -l info deploy --image-tag=49779134ca1dcef21f0b5123d3d5c2f4f47da650
+INFO[0000] using config file: .ecs-toolkit.yml          
+INFO[0000] reading .ecs-toolkit.yml config file         
+INFO[0000] parsing config file                          
+INFO[0000] validating config file                       
+INFO[0000] starting deployment of services               cluster=shipatlas
+INFO[0000] fetching service profiles: hub-web-server, hub-worker, hub-worker-scheduler  cluster=shipatlas
+WARN[0001] some services missing, limiting to: hub-web-server  cluster=shipatlas
+INFO[0001] fetching service task definition profile      cluster=shipatlas service=hub-web-server
+INFO[0002] building new task definition from hub-web-server:98  cluster=shipatlas service=hub-web-server
+INFO[0002] old container image tag: 49779134ca1dcef21f0b5123d3d5c2f4f47da650  cluster=shipatlas container=rails service=hub-web-server
+INFO[0002] new container image tag: 49779134ca1dcef21f0b5123d3d5c2f4f47da650  cluster=shipatlas container=rails service=hub-web-server
+WARN[0002] skipping container image tag update, no changes  cluster=shipatlas container=rails service=hub-web-server
+WARN[0002] skipping registering new task definition, no changes  cluster=shipatlas service=hub-web-server
+WARN[0002] skipping service update, no changes           cluster=shipatlas service=hub-web-server
+INFO[0002] completed deployment of services              cluster=shipatlas
 ```
 
 ## Development
