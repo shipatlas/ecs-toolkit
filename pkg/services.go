@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
@@ -71,6 +72,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	// Loop through all services, fetch the latest task definition, make a new
 	// revision of it with updated image tags and finally update the service to
 	// use the new revision.
+	updatedServiceNames := []*string{}
 	for _, service := range servicesResult.Services {
 		serviceSublogger := log.WithFields(log.Fields{
 			"cluster": *config.Cluster,
@@ -213,10 +215,22 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		if err != nil {
 			clusterSublogger.Fatalf("unable to update service to use new task definition: %v", err)
 		}
+
+		updatedServiceNames = append(updatedServiceNames, service.ServiceName)
 		serviceSublogger.Info("successfully updated service to use new task definition")
 	}
 
-	// Make sure we wait for rollout of all services
+	if len(updatedServiceNames) == 0 {
+		clusterSublogger.Info("completed deployment of services")
+
+		return
+	}
+
+	// Follow rollout of all services until all have a final status.
+	clusterSublogger.Info("watch rollout progress of services")
+	WatchServicesDeployment(config.Cluster, updatedServiceNames, client)
+
+	// Make sure we wait for rollout of all services.
 	clusterSublogger.Info("checking if all services are stable")
 	waiter := ecs.NewServicesStableWaiter(client)
 	maxWaitTime := 15 * time.Minute
@@ -230,4 +244,64 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 
 	}
 	clusterSublogger.Info("completed deployment of services")
+}
+
+func WatchServicesDeployment(cluster *string, serviceNames []*string, client *ecs.Client) {
+	wg := sync.WaitGroup{}
+	wg.Add(len(serviceNames))
+	for _, serviceName := range serviceNames {
+		go watchServiceDeployment(cluster, serviceName, client, &wg)
+	}
+	wg.Wait()
+}
+
+func watchServiceDeployment(cluster *string, serviceName *string, client *ecs.Client, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	ticker := time.NewTicker(time.Second * 3).C
+
+	for {
+		serviceParams := &ecs.DescribeServicesInput{
+			Cluster:  cluster,
+			Services: []string{*serviceName},
+		}
+		serviceResult, err := client.DescribeServices(context.TODO(), serviceParams)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"cluster": *cluster,
+			}).Fatalf("unable to fetch service profiles: %v", err)
+		}
+
+		// If the service is not found then stop watching the service. We should
+		// also only ever receive one service.
+		if len(serviceResult.Services) != 1 {
+			break
+		}
+
+		activeService := false
+		service := serviceResult.Services[0]
+		for _, deployment := range service.Deployments {
+			// PRIMARY The most recent deployment of a service. ACTIVE A service
+			// deployment that still has running tasks, but are in the process
+			// of being replaced with a new PRIMARY deployment. INACTIVE A
+			// deployment that has been completely replaced.
+			//
+			// If a service has an ACTIVE deployment then that means that it's
+			// still being rolled out.
+			if *deployment.Status == "ACTIVE" {
+				activeService = true
+			}
+
+			log.WithFields(log.Fields{
+				"cluster": *cluster,
+				"service": *serviceName,
+			}).Infof("watching ... service: %s, deployment: %s, rollout: %d/%d (%d pending)", strings.ToLower(*service.Status), strings.ToLower(*deployment.Status), deployment.RunningCount, deployment.DesiredCount, deployment.PendingCount)
+		}
+
+		if !activeService {
+			break
+		}
+
+		<-ticker
+	}
 }
