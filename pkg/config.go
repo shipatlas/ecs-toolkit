@@ -14,7 +14,7 @@ type Service struct {
 }
 
 type Task struct {
-	Name       *string   `mapstructure:"name" validate:"required"`
+	Family     *string   `mapstructure:"family" validate:"required"`
 	Containers []*string `mapstructure:"containers" validate:"required,min=1,dive"`
 	Force      *bool     `mapstructure:"force"`
 }

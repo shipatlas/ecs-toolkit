@@ -2,10 +2,10 @@
 version: v1
 cluster: shipatlas
 tasks:
-  - name: hub-asset-sync
+  - family: hub-asset-sync
     containers:
       - asset-sync
-  - name: hub-database-migrate
+  - family: hub-database-migrate
     containers:
       - rails
 services:
