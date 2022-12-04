@@ -83,12 +83,12 @@ func initConfig() {
 		log.Fatalf("unable to read %s config file: %v", viper.ConfigFileUsed(), err)
 	}
 
-	log.Info("parsing config file")
+	log.Debugf("parsing %s config file", viper.ConfigFileUsed())
 	if err := viper.Unmarshal(&toolConfig); err != nil {
-		log.Fatalf("unable to parse config file: %v", err)
+		log.Fatalf("unable to parse %s config file: %v", viper.ConfigFileUsed(), err)
 	}
 
-	log.Info("validating config file")
+	log.Debugf("validating %s config file", viper.ConfigFileUsed())
 	validate := validator.New()
 	err := validate.Struct(&toolConfig)
 	if err != nil {
@@ -100,7 +100,7 @@ func initConfig() {
 			log.Error(strings.ToLower(err.Error()))
 		}
 
-		log.Fatal("unable to validate config file")
+		log.Fatalf("unable to validate %s config file", viper.ConfigFileUsed())
 	}
 }
 

@@ -18,7 +18,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	clusterSublogger := log.WithFields(log.Fields{
 		"cluster": *config.Cluster,
 	})
-	clusterSublogger.Info("starting deployment of services")
+	clusterSublogger.Info("starting rollout to services")
 
 	// Prepare service mapping for easy lookup later, basically create a map
 	// with the service name as the key and the service as the value in the
@@ -32,7 +32,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	// there are no services to update.
 	configServiceNames := config.ServiceNames()
 	if len(configServiceNames) == 0 {
-		clusterSublogger.Warn("skipping deployment of services, none found")
+		clusterSublogger.Warn("skipping rollout to services, none found")
 
 		return
 	}
@@ -221,7 +221,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	}
 
 	if len(updatedServiceNames) == 0 {
-		clusterSublogger.Info("completed deployment of services")
+		clusterSublogger.Info("completed rollout to services")
 
 		return
 	}
@@ -243,7 +243,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		clusterSublogger.Fatalf("unable to check if all services are stable: %v", err)
 
 	}
-	clusterSublogger.Info("completed deployment of services")
+	clusterSublogger.Info("completed rollout to services")
 }
 
 func WatchServicesDeployment(cluster *string, serviceNames []*string, client *ecs.Client) {
