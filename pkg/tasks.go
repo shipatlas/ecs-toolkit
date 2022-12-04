@@ -2,13 +2,10 @@ package pkg
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 
-	dockerparser "github.com/novln/docker-parser"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -50,125 +47,45 @@ func (config *Config) deployTask(taskFamilyName *string, newContainerImageTag *s
 		taskMapping[*task.Family] = *task
 	}
 
-	// Fetch full profile of the latest task definition.
-	taskSublogger.Info("fetching task definition profile")
-	taskDefinitionParams := &ecs.DescribeTaskDefinitionInput{
-		TaskDefinition: taskFamilyName,
-		Include: []types.TaskDefinitionField{
-			types.TaskDefinitionFieldTags,
-		},
-	}
-	taskDefinitionResult, err := client.DescribeTaskDefinition(context.TODO(), taskDefinitionParams)
-	if err != nil {
-		taskSublogger.Fatalf("unable to fetch task definition profile: %v", err)
-	}
-
-	// Copy details of the current task definition to use a foundation of a
-	// new revision.
-	taskSublogger.Infof("building new task definition from %s:%d", *taskDefinitionResult.TaskDefinition.Family, taskDefinitionResult.TaskDefinition.Revision)
-	registerTaskDefinitionParams := &ecs.RegisterTaskDefinitionInput{
-		ContainerDefinitions:    taskDefinitionResult.TaskDefinition.ContainerDefinitions,
-		Family:                  taskDefinitionResult.TaskDefinition.Family,
-		Cpu:                     taskDefinitionResult.TaskDefinition.Cpu,
-		EphemeralStorage:        taskDefinitionResult.TaskDefinition.EphemeralStorage,
-		ExecutionRoleArn:        taskDefinitionResult.TaskDefinition.ExecutionRoleArn,
-		InferenceAccelerators:   taskDefinitionResult.TaskDefinition.InferenceAccelerators,
-		IpcMode:                 taskDefinitionResult.TaskDefinition.IpcMode,
-		Memory:                  taskDefinitionResult.TaskDefinition.Memory,
-		NetworkMode:             taskDefinitionResult.TaskDefinition.NetworkMode,
-		PidMode:                 taskDefinitionResult.TaskDefinition.PidMode,
-		PlacementConstraints:    taskDefinitionResult.TaskDefinition.PlacementConstraints,
-		ProxyConfiguration:      taskDefinitionResult.TaskDefinition.ProxyConfiguration,
-		RequiresCompatibilities: taskDefinitionResult.TaskDefinition.RequiresCompatibilities,
-		RuntimePlatform:         taskDefinitionResult.TaskDefinition.RuntimePlatform,
-		TaskRoleArn:             taskDefinitionResult.TaskDefinition.TaskRoleArn,
-		Volumes:                 taskDefinitionResult.TaskDefinition.Volumes,
-	}
-
-	// Copy tags only if they exist else it will error out if you pass in an
-	// empty list of tags.
-	if len(taskDefinitionResult.Tags) >= 1 {
-		registerTaskDefinitionParams.Tags = taskDefinitionResult.Tags
-	}
-
-	// Prepare task container mapping for easy lookup of containers that
-	// should be updated, basically create a map with the container name as
-	// the key and `true` as the value. If container lookup is found, then
-	// that's an indicator of presence which can be used as a check.
+	// Store information on which containers should be updated.
 	taskContainerUpdateable := make(map[string]bool)
 	for _, containerName := range taskMapping[*taskFamilyName].Containers {
 		taskContainerUpdateable[*containerName] = true
 	}
 
-	// For the new revision of the task definition update the image tag of
-	// each container (where applicable).
-	for i, containerDefinition := range registerTaskDefinitionParams.ContainerDefinitions {
-		containerName := *containerDefinition.Name
-		containerSublogger := log.WithFields(log.Fields{
-			"cluster":   *config.Cluster,
-			"task":      *taskFamilyName,
-			"container": containerName,
-		})
-
-		// Only proceed to update container image tag if the container is on
-		// the list of containers to update.
-		if !taskContainerUpdateable[containerName] {
-			containerSublogger.Warn("skipping container image tag update, not on the container list")
-
-			continue
-		}
-
-		oldContainerImage := *containerDefinition.Image
-		parsedImage, err := dockerparser.Parse(oldContainerImage)
-		if err != nil {
-			containerSublogger.Fatalf("unable to parse current container image %s: %v", oldContainerImage, err)
-		}
-		oldContainerImageTag := parsedImage.Tag()
-		newContainerImage := strings.Replace(oldContainerImage, oldContainerImageTag, *newContainerImageTag, 1)
-		containerSublogger.Debugf("container image registry: %s", parsedImage.Registry())
-		containerSublogger.Debugf("container image name: %s", parsedImage.ShortName())
-		containerSublogger.Infof("old container image tag: %s", oldContainerImageTag)
-		containerSublogger.Infof("new container image tag: %s", *newContainerImageTag)
-
-		// If the old and new image tags are the same then there's no need
-		// to update the image and consequently the task definition.
-		if oldContainerImageTag == *newContainerImageTag {
-			containerSublogger.Warn("skipping container image tag update, no changes")
-
-			continue
-		}
-
-		*registerTaskDefinitionParams.ContainerDefinitions[i].Image = newContainerImage
+	// Generate new task definition with the required changes.
+	taskDefinitionInput := GenerateTaskDefinitionInput{
+		ImageTag:             newContainerImageTag,
+		TaskDefinition:       taskFamilyName,
+		UpdateableContainers: taskContainerUpdateable,
 	}
+	newTaskDefinition, taskDefinitionUpdated := GenerateTaskDefinition(&taskDefinitionInput, client, taskSublogger)
 
-	// Register a new updated version of the task definition i.e. with new
-	// container image tags.
-	taskSublogger.Info("registering new task definition")
-	registerTaskDefinitionResult, err := client.RegisterTaskDefinition(context.TODO(), registerTaskDefinitionParams)
-	if err != nil {
-		taskSublogger.Fatalf("unable to register new task definition: %v", err)
-	}
-	newTaskDefinition := fmt.Sprintf("%s:%d", *registerTaskDefinitionResult.TaskDefinition.Family, registerTaskDefinitionResult.TaskDefinition.Revision)
-	taskSublogger.Infof("successfully registered new task definition %s", newTaskDefinition)
-
-	task := taskMapping[*taskFamilyName]
-
-	// Prepare task definition.
-	taskSublogger.Info("building new task configuration")
+	// Prepare parameters for task
+	taskSublogger.Info("building running task configuration")
+	taskConfig := taskMapping[*taskFamilyName]
 	runTaskParams := &ecs.RunTaskInput{
-		TaskDefinition:       registerTaskDefinitionResult.TaskDefinition.TaskDefinitionArn,
 		Cluster:              config.Cluster,
-		Count:                task.Count,
+		Count:                taskConfig.Count,
 		EnableECSManagedTags: true,
 		EnableExecuteCommand: false,
 		PropagateTags:        types.PropagateTagsTaskDefinition,
 	}
 
+	// Set task definition
+	if taskDefinitionUpdated {
+		taskSublogger.Info("changes made, using new task definition")
+		runTaskParams.TaskDefinition = newTaskDefinition.TaskDefinitionArn
+	} else {
+		taskSublogger.Info("no changes, using latest task definition")
+		runTaskParams.TaskDefinition = taskFamilyName
+	}
+
 	// Set capacity provider strategies
-	if task.CapacityProviderStrategies != nil {
+	if taskConfig.CapacityProviderStrategies != nil {
 		taskSublogger.Debug("setting capacity provider strategies")
 		capacityProviders := []types.CapacityProviderStrategyItem{}
-		for _, capacityProviderStrategy := range task.CapacityProviderStrategies {
+		for _, capacityProviderStrategy := range taskConfig.CapacityProviderStrategies {
 			capacityProviders = append(capacityProviders, types.CapacityProviderStrategyItem{
 				CapacityProvider: capacityProviderStrategy.CapacityProvider,
 				Base:             *capacityProviderStrategy.Base,
@@ -180,9 +97,9 @@ func (config *Config) deployTask(taskFamilyName *string, newContainerImageTag *s
 	}
 
 	// Set launch type
-	if task.LaunchType != nil {
-		taskSublogger.Debugf("setting launch type to %s", *task.LaunchType)
-		switch *task.LaunchType {
+	if taskConfig.LaunchType != nil {
+		taskSublogger.Debugf("setting launch type to %s", *taskConfig.LaunchType)
+		switch *taskConfig.LaunchType {
 		case "ec2":
 			runTaskParams.LaunchType = types.LaunchTypeEc2
 		case "fargate":
@@ -193,21 +110,21 @@ func (config *Config) deployTask(taskFamilyName *string, newContainerImageTag *s
 	}
 
 	// Set network configuration
-	if task.NetworkConfiguration != nil {
+	if taskConfig.NetworkConfiguration != nil {
 		taskSublogger.Debug("setting network configuration")
 
 		assignPublicIp := types.AssignPublicIpDisabled
-		if *task.NetworkConfiguration.VpcConfiguration.AssignPublicIp {
+		if *taskConfig.NetworkConfiguration.VpcConfiguration.AssignPublicIp {
 			assignPublicIp = types.AssignPublicIpEnabled
 		}
 
 		securityGroups := []string{}
-		for _, securityGroup := range task.NetworkConfiguration.VpcConfiguration.SecurityGroups {
+		for _, securityGroup := range taskConfig.NetworkConfiguration.VpcConfiguration.SecurityGroups {
 			securityGroups = append(securityGroups, *securityGroup)
 		}
 
 		subnets := []string{}
-		for _, subnet := range task.NetworkConfiguration.VpcConfiguration.Subnets {
+		for _, subnet := range taskConfig.NetworkConfiguration.VpcConfiguration.Subnets {
 			subnets = append(subnets, *subnet)
 		}
 

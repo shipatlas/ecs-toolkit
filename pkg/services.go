@@ -2,15 +2,12 @@ package pkg
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 
-	dockerparser "github.com/novln/docker-parser"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -79,119 +76,21 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 			"service": *service.ServiceName,
 		})
 
-		// Fetch full profile of the latest task definition.
-		serviceSublogger.Info("fetching service task definition profile")
-		taskDefinitionParams := &ecs.DescribeTaskDefinitionInput{
-			TaskDefinition: service.TaskDefinition,
-			Include: []types.TaskDefinitionField{
-				types.TaskDefinitionFieldTags,
-			},
-		}
-		taskDefinitionResult, err := client.DescribeTaskDefinition(context.TODO(), taskDefinitionParams)
-		if err != nil {
-			serviceSublogger.Fatalf("unable to fetch service task definition profile: %v", err)
-		}
-
-		// Copy details of the current task definition to use a foundation of a
-		// new revision.
-		serviceSublogger.Infof("building new task definition from %s:%d", *taskDefinitionResult.TaskDefinition.Family, taskDefinitionResult.TaskDefinition.Revision)
-		registerTaskDefinitionParams := &ecs.RegisterTaskDefinitionInput{
-			ContainerDefinitions:    taskDefinitionResult.TaskDefinition.ContainerDefinitions,
-			Family:                  taskDefinitionResult.TaskDefinition.Family,
-			Cpu:                     taskDefinitionResult.TaskDefinition.Cpu,
-			EphemeralStorage:        taskDefinitionResult.TaskDefinition.EphemeralStorage,
-			ExecutionRoleArn:        taskDefinitionResult.TaskDefinition.ExecutionRoleArn,
-			InferenceAccelerators:   taskDefinitionResult.TaskDefinition.InferenceAccelerators,
-			IpcMode:                 taskDefinitionResult.TaskDefinition.IpcMode,
-			Memory:                  taskDefinitionResult.TaskDefinition.Memory,
-			NetworkMode:             taskDefinitionResult.TaskDefinition.NetworkMode,
-			PidMode:                 taskDefinitionResult.TaskDefinition.PidMode,
-			PlacementConstraints:    taskDefinitionResult.TaskDefinition.PlacementConstraints,
-			ProxyConfiguration:      taskDefinitionResult.TaskDefinition.ProxyConfiguration,
-			RequiresCompatibilities: taskDefinitionResult.TaskDefinition.RequiresCompatibilities,
-			RuntimePlatform:         taskDefinitionResult.TaskDefinition.RuntimePlatform,
-			TaskRoleArn:             taskDefinitionResult.TaskDefinition.TaskRoleArn,
-			Volumes:                 taskDefinitionResult.TaskDefinition.Volumes,
-		}
-
-		// Copy tags only if they exist else it will error out if you pass in an
-		// empty list of tags.
-		if len(taskDefinitionResult.Tags) >= 1 {
-			registerTaskDefinitionParams.Tags = taskDefinitionResult.Tags
-		}
-
-		// Prepare service container mapping for easy lookup of containers that
-		// should be updated, basically create a map with the container name as
-		// the key and `true` as the value. If container lookup is found, then
-		// that's an indicator of presence which can be used as a check.
+		// Store information on which containers should be updated.
 		serviceContainerUpdateable := make(map[string]bool)
 		for _, containerName := range serviceMapping[*service.ServiceName].Containers {
 			serviceContainerUpdateable[*containerName] = true
 		}
 
-		// For the new revision of the task definition update the image tag of
-		// each container (where applicable).
-		taskDefinitionUpdated := false
-		for i, containerDefinition := range registerTaskDefinitionParams.ContainerDefinitions {
-			containerName := *containerDefinition.Name
-			containerSublogger := log.WithFields(log.Fields{
-				"cluster":   *config.Cluster,
-				"service":   *service.ServiceName,
-				"container": containerName,
-			})
-
-			// Only proceed to update container image tag if the container is on
-			// the list of containers to update.
-			if !serviceContainerUpdateable[containerName] {
-				containerSublogger.Warn("skipping container image tag update, not on the container list")
-
-				continue
-			}
-
-			oldContainerImage := *containerDefinition.Image
-			parsedImage, err := dockerparser.Parse(oldContainerImage)
-			if err != nil {
-				containerSublogger.Fatalf("unable to parse current container image %s: %v", oldContainerImage, err)
-			}
-			oldContainerImageTag := parsedImage.Tag()
-			newContainerImage := strings.Replace(oldContainerImage, oldContainerImageTag, *newContainerImageTag, 1)
-			containerSublogger.Debugf("container image registry: %s", parsedImage.Registry())
-			containerSublogger.Debugf("container image name: %s", parsedImage.ShortName())
-			containerSublogger.Infof("old container image tag: %s", oldContainerImageTag)
-			containerSublogger.Infof("new container image tag: %s", *newContainerImageTag)
-
-			// If the old and new image tags are the same then there's no need
-			// to update the image and consequently the task definition.
-			if oldContainerImageTag == *newContainerImageTag {
-				containerSublogger.Warn("skipping container image tag update, no changes")
-
-				continue
-			}
-
-			*registerTaskDefinitionParams.ContainerDefinitions[i].Image = newContainerImage
-			taskDefinitionUpdated = true
+		// Generate new task definition with the required changes.
+		taskDefinitionInput := GenerateTaskDefinitionInput{
+			ImageTag:             newContainerImageTag,
+			TaskDefinition:       service.TaskDefinition,
+			UpdateableContainers: serviceContainerUpdateable,
 		}
+		newTaskDefinition, taskDefinitionUpdated := GenerateTaskDefinition(&taskDefinitionInput, client, serviceSublogger)
 
-		if !taskDefinitionUpdated {
-			serviceSublogger.Warn("skipping registering new task definition, no changes")
-			serviceSublogger.Warn("skipping service update, no changes")
-
-			continue
-		}
-
-		// Register a new updated version of the task definition i.e. with new
-		// container image tags.
-		serviceSublogger.Info("registering new task definition")
-		registerTaskDefinitionResult, err := client.RegisterTaskDefinition(context.TODO(), registerTaskDefinitionParams)
-		if err != nil {
-			serviceSublogger.Fatalf("unable to register new task definition: %v", err)
-		}
-		newTaskDefinition := fmt.Sprintf("%s:%d", *registerTaskDefinitionResult.TaskDefinition.Family, registerTaskDefinitionResult.TaskDefinition.Revision)
-		serviceSublogger.Infof("successfully registered new task definition %s", newTaskDefinition)
-
-		// Update the service to use the new/latest revision of the task
-		// definition.
-		serviceSublogger.Info("update service to use new task definition")
+		// Prepare parameters for task
 		updateServiceParams := &ecs.UpdateServiceInput{
 			Service:                       service.ServiceName,
 			CapacityProviderStrategy:      service.CapacityProviderStrategy,
@@ -209,15 +108,26 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 			PlatformVersion:               service.PlatformVersion,
 			PropagateTags:                 service.PropagateTags,
 			ServiceRegistries:             service.ServiceRegistries,
-			TaskDefinition:                &newTaskDefinition,
+			TaskDefinition:                newTaskDefinition.TaskDefinitionArn,
 		}
+
+		// Set task definition
+		if taskDefinitionUpdated {
+			serviceSublogger.Info("changes made, using new task definition")
+			updateServiceParams.TaskDefinition = newTaskDefinition.TaskDefinitionArn
+		} else {
+			serviceSublogger.Info("no changes, using latest task definition")
+			updateServiceParams.TaskDefinition = service.TaskDefinition
+		}
+
+		serviceSublogger.Info("attempting to update service")
 		_, err = client.UpdateService(context.TODO(), updateServiceParams)
 		if err != nil {
-			clusterSublogger.Fatalf("unable to update service to use new task definition: %v", err)
+			clusterSublogger.Fatalf("unable to update service: %v", err)
 		}
 
 		updatedServiceNames = append(updatedServiceNames, service.ServiceName)
-		serviceSublogger.Info("successfully updated service to use new task definition")
+		serviceSublogger.Info("successfully updated service")
 	}
 
 	if len(updatedServiceNames) == 0 {
