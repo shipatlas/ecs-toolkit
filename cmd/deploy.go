@@ -71,5 +71,6 @@ func (options *deployOptions) run() {
 	}
 	client := ecs.NewFromConfig(awsCfg)
 
+	toolConfig.DeployTasks(&options.imageTag, client)
 	toolConfig.DeployServices(&options.imageTag, client)
 }
