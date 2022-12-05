@@ -152,11 +152,47 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	// the count that was set. All tasks should be watched.
 	wg := sync.WaitGroup{}
 	wg.Add(len(runTaskResult.Tasks))
-	for index, task := range runTaskResult.Tasks {
+	waitedOnTaskArns := []string{}
+	for index, waitedOnTask := range runTaskResult.Tasks {
 		taskNo := index + 1
-		go watchTask(cluster, &taskNo, &task, client, taskSublogger, &wg)
+		waitedOnTaskArns = append(waitedOnTaskArns, *waitedOnTask.TaskArn)
+		go watchTask(cluster, &taskNo, &waitedOnTask, client, taskSublogger, &wg)
 	}
 	wg.Wait()
+
+	// Make sure we wait for rollout of all tasks. It should take long because
+	// they should have anyway (since they were watched until they stopped).
+	taskSublogger.Info("checking final status of all tasks")
+	waiter := ecs.NewTasksStoppedWaiter(client)
+	maxWaitTime := 15 * time.Minute
+	taskParams := &ecs.DescribeTasksInput{
+		Cluster: cluster,
+		Tasks:   waitedOnTaskArns,
+	}
+	waitForOutputResult, err := waiter.WaitForOutput(context.TODO(), taskParams, maxWaitTime, func(o *ecs.TasksStoppedWaiterOptions) {
+		o.MinDelay = 5 * time.Second
+		o.MaxDelay = 120 * time.Second
+		o.LogWaitAttempts = log.IsLevelEnabled(log.DebugLevel) || log.IsLevelEnabled(log.TraceLevel)
+	})
+	if err != nil {
+		taskSublogger.Fatalf("unable to check final status of all tasks: %v", err)
+	}
+
+	// Determine if the rollout should stop or not. If some containers had
+	// non-zero exits then we should not continue and assume failure.
+	nonZeroExitContainerCount := 0
+	for _, waitedForTask := range waitForOutputResult.Tasks {
+		for _, container := range waitedForTask.Containers {
+			if *container.ExitCode != 0 {
+				nonZeroExitContainerCount = nonZeroExitContainerCount + 1
+			}
+		}
+	}
+
+	if nonZeroExitContainerCount != 0 {
+		taskSublogger.Fatalf("checked final status, %d failed", nonZeroExitContainerCount)
+	}
+	taskSublogger.Info("checked final status, all successful")
 }
 
 func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Client, logger *log.Entry, watchWg *sync.WaitGroup) {
