@@ -35,7 +35,7 @@ type NetworkConfiguration struct {
 }
 
 type VpcConfiguration struct {
-	AssignPublicIp *bool     `mapstructure:"assign_public_ip" validate:"required"`
+	AssignPublicIP *bool     `mapstructure:"assign_public_ip" validate:"required"`
 	SecurityGroups []*string `mapstructure:"security_groups" validate:"required,min=1"`
 	Subnets        []*string `mapstructure:"subnets" validate:"required,min=1"`
 }

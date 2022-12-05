@@ -114,9 +114,9 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	if taskConfig.NetworkConfiguration != nil {
 		taskSublogger.Debug("setting network configuration")
 
-		assignPublicIp := types.AssignPublicIpDisabled
-		if *taskConfig.NetworkConfiguration.VpcConfiguration.AssignPublicIp {
-			assignPublicIp = types.AssignPublicIpEnabled
+		assignPublicIP := types.AssignPublicIpDisabled
+		if *taskConfig.NetworkConfiguration.VpcConfiguration.AssignPublicIP {
+			assignPublicIP = types.AssignPublicIpEnabled
 		}
 
 		securityGroups := []string{}
@@ -132,7 +132,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 		networkConfiguration := &types.NetworkConfiguration{
 			AwsvpcConfiguration: &types.AwsVpcConfiguration{
 				Subnets:        subnets,
-				AssignPublicIp: assignPublicIp,
+				AssignPublicIp: assignPublicIP,
 				SecurityGroups: securityGroups,
 			},
 		}
@@ -182,11 +182,11 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 		task := taskResult.Tasks[0]
 
 		// Get task ID from ARN since it's not available.
-		var resourceIdRegex = regexp.MustCompile(`[^:/]*$`)
-		taskId := resourceIdRegex.FindString(*task.TaskArn)
+		var resourceIDRegex = regexp.MustCompile(`[^:/]*$`)
+		taskID := resourceIDRegex.FindString(*task.TaskArn)
 
 		// Set up logger with the task identifier.
-		taskLogger := logger.WithField("task-id", taskId)
+		taskLogger := logger.WithField("task-id", taskID)
 		taskLogger.Infof("watching task [%d] ... last status: %s, desired status: %s, health: %s", *taskNo, strings.ToLower(*task.LastStatus), strings.ToLower(*task.DesiredStatus), strings.ToLower(string(task.HealthStatus)))
 
 		// When a task is started it can pass through several states before it
