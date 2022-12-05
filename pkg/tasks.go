@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
@@ -17,71 +18,68 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 
 	// Get list of tasks to update from the config file but do not proceed if
 	// there are no tasks to update.
-	configTaskFamilyNames := config.TaskFamilyNames()
-	if len(configTaskFamilyNames) == 0 {
+	if len(config.Tasks) == 0 {
 		clusterSublogger.Warn("skipping rollout to tasks, none found")
 
 		return
 	}
 
-	for _, configTaskFamilyName := range configTaskFamilyNames {
-		config.deployTask(&configTaskFamilyName, newContainerImageTag, client)
+	// Process each task on its own asynchronously. The idea is that tasks are
+	// short-lived deployment steps that are pre-requisites to the deployment.
+	// It's worth noting that all tasks must complete before the deployment
+	// starts.
+	wg := sync.WaitGroup{}
+	wg.Add(len(config.Tasks))
+	for _, taskConfig := range config.Tasks {
+		go deployTask(config.Cluster, taskConfig, newContainerImageTag, client, &wg)
 	}
-
-	log.Fatal("--- STOP ---")
+	wg.Wait()
 
 	clusterSublogger.Info("completed rollout to tasks")
 }
 
-func (config *Config) deployTask(taskFamilyName *string, newContainerImageTag *string, client *ecs.Client) {
-	taskSublogger := log.WithFields(log.Fields{
-		"cluster": *config.Cluster,
-		"task":    *taskFamilyName,
-	})
+func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, wg *sync.WaitGroup) {
+	defer wg.Done()
 
-	// Prepare task mapping for easy lookup later, basically create a map with
-	// the task family as the key and the task as the value in the tasks list as
-	// the value.
-	taskMapping := make(map[string]Task)
-	for _, task := range config.Tasks {
-		taskMapping[*task.Family] = *task
-	}
+	taskSublogger := log.WithFields(log.Fields{
+		"cluster": *cluster,
+		"task":    *taskConfig.Family,
+	})
 
 	// Store information on which containers should be updated.
 	taskContainerUpdateable := make(map[string]bool)
-	for _, containerName := range taskMapping[*taskFamilyName].Containers {
+	for _, containerName := range taskConfig.Containers {
 		taskContainerUpdateable[*containerName] = true
 	}
 
 	// Generate new task definition with the required changes.
 	taskDefinitionInput := GenerateTaskDefinitionInput{
 		ImageTag:             newContainerImageTag,
-		TaskDefinition:       taskFamilyName,
+		TaskDefinition:       taskConfig.Family,
 		UpdateableContainers: taskContainerUpdateable,
 	}
 	newTaskDefinition, taskDefinitionUpdated := GenerateTaskDefinition(&taskDefinitionInput, client, taskSublogger)
 
-	// Prepare parameters for task
+	// Prepare parameters for task.
 	taskSublogger.Info("building running task configuration")
-	taskConfig := taskMapping[*taskFamilyName]
 	runTaskParams := &ecs.RunTaskInput{
-		Cluster:              config.Cluster,
+		Cluster:              cluster,
 		Count:                taskConfig.Count,
 		EnableECSManagedTags: true,
 		EnableExecuteCommand: false,
 		PropagateTags:        types.PropagateTagsTaskDefinition,
 	}
 
-	// Set task definition
+	// Set task definition.
 	if taskDefinitionUpdated {
 		taskSublogger.Info("changes made, using new task definition")
 		runTaskParams.TaskDefinition = newTaskDefinition.TaskDefinitionArn
 	} else {
 		taskSublogger.Info("no changes, using latest task definition")
-		runTaskParams.TaskDefinition = taskFamilyName
+		runTaskParams.TaskDefinition = taskConfig.Family
 	}
 
-	// Set capacity provider strategies
+	// Set capacity provider strategies.
 	if taskConfig.CapacityProviderStrategies != nil {
 		taskSublogger.Debug("setting capacity provider strategies")
 		capacityProviders := []types.CapacityProviderStrategyItem{}
@@ -96,7 +94,7 @@ func (config *Config) deployTask(taskFamilyName *string, newContainerImageTag *s
 		runTaskParams.CapacityProviderStrategy = capacityProviders
 	}
 
-	// Set launch type
+	// Set launch type.
 	if taskConfig.LaunchType != nil {
 		taskSublogger.Debugf("setting launch type to %s", *taskConfig.LaunchType)
 		switch *taskConfig.LaunchType {
@@ -109,7 +107,7 @@ func (config *Config) deployTask(taskFamilyName *string, newContainerImageTag *s
 		}
 	}
 
-	// Set network configuration
+	// Set network configuration.
 	if taskConfig.NetworkConfiguration != nil {
 		taskSublogger.Debug("setting network configuration")
 
@@ -139,6 +137,7 @@ func (config *Config) deployTask(taskFamilyName *string, newContainerImageTag *s
 		runTaskParams.NetworkConfiguration = networkConfiguration
 	}
 
+	// Starts a new task using the specified parameters.
 	taskSublogger.Info("attempting to start new task")
 	runTaskResult, err := client.RunTask(context.TODO(), runTaskParams)
 	if err != nil {
