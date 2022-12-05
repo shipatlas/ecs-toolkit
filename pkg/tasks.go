@@ -2,7 +2,10 @@ package pkg
 
 import (
 	"context"
+	"regexp"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
@@ -38,8 +41,8 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 	clusterSublogger.Info("completed rollout to tasks")
 }
 
-func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, wg *sync.WaitGroup) {
-	defer wg.Done()
+func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, deployWg *sync.WaitGroup) {
+	defer deployWg.Done()
 
 	taskSublogger := log.WithFields(log.Fields{
 		"cluster": *cluster,
@@ -61,7 +64,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	newTaskDefinition, taskDefinitionUpdated := GenerateTaskDefinition(&taskDefinitionInput, client, taskSublogger)
 
 	// Prepare parameters for task.
-	taskSublogger.Info("building running task configuration")
+	taskSublogger.Info("preparing running task parameters")
 	runTaskParams := &ecs.RunTaskInput{
 		Cluster:              cluster,
 		Count:                taskConfig.Count,
@@ -72,10 +75,10 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 
 	// Set task definition.
 	if taskDefinitionUpdated {
-		taskSublogger.Info("changes made, using new task definition")
+		taskSublogger.Info("updated task definition, using new one")
 		runTaskParams.TaskDefinition = newTaskDefinition.TaskDefinitionArn
 	} else {
-		taskSublogger.Info("no changes, using latest task definition")
+		taskSublogger.Info("no changes to previous task definition, using latest")
 		runTaskParams.TaskDefinition = taskConfig.Family
 	}
 
@@ -137,15 +140,79 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 		runTaskParams.NetworkConfiguration = networkConfiguration
 	}
 
-	// Starts a new task using the specified parameters.
-	taskSublogger.Info("attempting to start new task")
+	// Starts task(s) using the specified parameters.
+	taskSublogger.Infof("attempting to run new task, desired count: %d", *taskConfig.Count)
 	runTaskResult, err := client.RunTask(context.TODO(), runTaskParams)
 	if err != nil {
-		taskSublogger.Fatalf("unable to start new task: %v", err)
+		taskSublogger.Fatalf("unable to run new task, desired count: %d: %v", *taskConfig.Count, err)
 	}
+	taskSublogger.Infof("running new task, desired count: %d", *taskConfig.Count)
 
-	for i, newTask := range runTaskResult.Tasks {
-		taskNo := i + 1
-		taskSublogger.Infof("successfully started new task [%d] %s", taskNo, *newTask.TaskArn)
+	// Watch each task on its own asynchronously. The number of tasks depends on
+	// the count that was set. All tasks should be watched.
+	wg := sync.WaitGroup{}
+	wg.Add(len(runTaskResult.Tasks))
+	for index, task := range runTaskResult.Tasks {
+		taskNo := index + 1
+		go watchTask(cluster, &taskNo, &task, client, taskSublogger, &wg)
+	}
+	wg.Wait()
+}
+
+func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Client, logger *log.Entry, watchWg *sync.WaitGroup) {
+	defer watchWg.Done()
+
+	ticker := time.NewTicker(time.Second * 3).C
+
+	for {
+		taskParams := &ecs.DescribeTasksInput{
+			Cluster: cluster,
+			Tasks:   []string{*task.TaskArn},
+		}
+		taskResult, err := client.DescribeTasks(context.TODO(), taskParams)
+		if err != nil {
+			logger.Fatalf("unable to fetch task profile: %v", err)
+		}
+
+		// If the task is not found then stop watching the task. We should
+		// also only ever receive one task.
+		if len(taskResult.Tasks) != 1 {
+			break
+		}
+		task := taskResult.Tasks[0]
+
+		// Get task ID from ARN since it's not available.
+		var resourceIdRegex = regexp.MustCompile(`[^:/]*$`)
+		taskId := resourceIdRegex.FindString(*task.TaskArn)
+
+		// Set up logger with the task identifier.
+		taskLogger := logger.WithField("task-id", taskId)
+		taskLogger.Infof("watching task [%d] ... last status: %s, desired status: %s, health: %s", *taskNo, strings.ToLower(*task.LastStatus), strings.ToLower(*task.DesiredStatus), strings.ToLower(string(task.HealthStatus)))
+
+		// When a task is started it can pass through several states before it
+		// finishes on its own or is stopped manually. The expectation here is
+		// that the task naturally progress through from PENDING to RUNNING to
+		// STOPPED.
+		stoppedTask := false
+		if *task.LastStatus == "STOPPED" {
+			stoppedTask = true
+		}
+
+		// If the task has stopped then there's no need to watch it any longer.
+		if stoppedTask {
+			for _, container := range task.Containers {
+				containerReason := "none"
+				if container.Reason != nil {
+					containerReason = strings.ToLower(*container.Reason)
+				}
+
+				taskLogger.Infof("stopped task [%d] container [%s] ... exit code: %d, reason: %s", *taskNo, *container.Name, *container.ExitCode, containerReason)
+			}
+			taskLogger.Infof("stopped task [%d] ... reason: %s", *taskNo, strings.ToLower(string(*task.StoppedReason)))
+
+			break
+		}
+
+		<-ticker
 	}
 }

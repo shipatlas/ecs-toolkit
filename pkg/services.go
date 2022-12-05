@@ -179,7 +179,7 @@ func watchServiceDeployment(cluster *string, serviceName *string, client *ecs.Cl
 		if err != nil {
 			log.WithFields(log.Fields{
 				"cluster": *cluster,
-			}).Fatalf("unable to fetch service profiles: %v", err)
+			}).Fatalf("unable to fetch service profile: %v", err)
 		}
 
 		// If the service is not found then stop watching the service. We should
