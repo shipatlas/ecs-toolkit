@@ -14,9 +14,7 @@ import (
 )
 
 func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Client) {
-	clusterSublogger := log.WithFields(log.Fields{
-		"cluster": *config.Cluster,
-	})
+	clusterSublogger := log.WithFields(log.Fields{"cluster": *config.Cluster})
 	clusterSublogger.Info("starting rollout to tasks")
 
 	// Get list of tasks to update from the config file but do not proceed if
@@ -27,27 +25,25 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 		return
 	}
 
-	// Process each task on its own asynchronously. The idea is that tasks are
-	// short-lived deployment steps that are pre-requisites to the deployment.
-	// It's worth noting that all tasks must complete before the deployment
-	// starts.
+	// Process each task on its own asynchronously to reduce the amount of time
+	// spent rolling them out. Tasks are short-lived deployment steps that are
+	// pre-requisites to the deployment. It's worth noting that all tasks must
+	// complete before the deployment starts.
 	wg := sync.WaitGroup{}
 	wg.Add(len(config.Tasks))
 	for _, taskConfig := range config.Tasks {
-		go deployTask(config.Cluster, taskConfig, newContainerImageTag, client, &wg)
+		go deployTask(config.Cluster, taskConfig, newContainerImageTag, client, clusterSublogger, &wg)
 	}
 	wg.Wait()
 
 	clusterSublogger.Info("completed rollout to tasks")
 }
 
-func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, deployWg *sync.WaitGroup) {
+func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, logger *log.Entry, deployWg *sync.WaitGroup) {
 	defer deployWg.Done()
 
-	taskSublogger := log.WithFields(log.Fields{
-		"cluster": *cluster,
-		"task":    *taskConfig.Family,
-	})
+	// Set up new logger with the task family.
+	taskSublogger := logger.WithField("task", *taskConfig.Family)
 
 	// Store information on which containers should be updated.
 	taskContainerUpdateable := make(map[string]bool)
@@ -152,10 +148,10 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	// the count that was set. All tasks should be watched.
 	wg := sync.WaitGroup{}
 	wg.Add(len(runTaskResult.Tasks))
-	waitedOnTaskArns := []string{}
+	watchedTaskArns := []string{}
 	for index, waitedOnTask := range runTaskResult.Tasks {
 		taskNo := index + 1
-		waitedOnTaskArns = append(waitedOnTaskArns, *waitedOnTask.TaskArn)
+		watchedTaskArns = append(watchedTaskArns, *waitedOnTask.TaskArn)
 		go watchTask(cluster, &taskNo, &waitedOnTask, client, taskSublogger, &wg)
 	}
 	wg.Wait()
@@ -167,7 +163,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	maxWaitTime := 15 * time.Minute
 	taskParams := &ecs.DescribeTasksInput{
 		Cluster: cluster,
-		Tasks:   waitedOnTaskArns,
+		Tasks:   watchedTaskArns,
 	}
 	waitForOutputResult, err := waiter.WaitForOutput(context.TODO(), taskParams, maxWaitTime, func(o *ecs.TasksStoppedWaiterOptions) {
 		o.MinDelay = 5 * time.Second
@@ -210,9 +206,11 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 			logger.Fatalf("unable to fetch task profile: %v", err)
 		}
 
-		// If the task is not found then stop watching the task. We should
-		// also only ever receive one task.
-		if len(taskResult.Tasks) != 1 {
+		// If the task is not found or it has been deleted then stop watching
+		// the task. We should also only ever receive one task.
+		if len(taskResult.Tasks) == 0 {
+			logger.Info("stopped watching, task not found")
+
 			break
 		}
 		task := taskResult.Tasks[0]
@@ -221,30 +219,25 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 		var resourceIDRegex = regexp.MustCompile(`[^:/]*$`)
 		taskID := resourceIDRegex.FindString(*task.TaskArn)
 
-		// Set up logger with the task identifier.
-		taskLogger := logger.WithField("task-id", taskID)
-		taskLogger.Infof("watching task [%d] ... last status: %s, desired status: %s, health: %s", *taskNo, strings.ToLower(*task.LastStatus), strings.ToLower(*task.DesiredStatus), strings.ToLower(string(task.HealthStatus)))
+		// Set up new logger with the task identifier.
+		taskSublogger := logger.WithField("task-id", taskID)
+		taskSublogger.Infof("watching task [%d] ... last status: %s, desired status: %s, health: %s", *taskNo, strings.ToLower(*task.LastStatus), strings.ToLower(*task.DesiredStatus), strings.ToLower(string(task.HealthStatus)))
 
 		// When a task is started it can pass through several states before it
 		// finishes on its own or is stopped manually. The expectation here is
 		// that the task naturally progress through from PENDING to RUNNING to
-		// STOPPED.
-		stoppedTask := false
+		// STOPPED. If the task has stopped then there's no need to watch it any
+		// longer.
 		if *task.LastStatus == "STOPPED" {
-			stoppedTask = true
-		}
-
-		// If the task has stopped then there's no need to watch it any longer.
-		if stoppedTask {
 			for _, container := range task.Containers {
 				containerReason := "none"
 				if container.Reason != nil {
 					containerReason = strings.ToLower(*container.Reason)
 				}
 
-				taskLogger.Infof("stopped task [%d] container [%s] ... exit code: %d, reason: %s", *taskNo, *container.Name, *container.ExitCode, containerReason)
+				taskSublogger.Infof("stopped task [%d] container [%s] ... exit code: %d, reason: %s", *taskNo, *container.Name, *container.ExitCode, containerReason)
 			}
-			taskLogger.Infof("stopped task [%d] ... reason: %s", *taskNo, strings.ToLower(string(*task.StoppedReason)))
+			taskSublogger.Infof("stopped task [%d] ... reason: %s", *taskNo, strings.ToLower(string(*task.StoppedReason)))
 
 			break
 		}
