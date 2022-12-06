@@ -164,28 +164,34 @@ func watchService(cluster *string, service *types.Service, client *ecs.Client, s
 		}
 		service := serviceResult.Services[0]
 
-		activeService := false
+		// PRIMARY - the most recent deployment of a service. ACTIVE - a service
+		// deployment that still has running tasks, but are in the process of
+		// being replaced with a new PRIMARY deployment. INACTIVE - A deployment
+		// that has been completely replaced.
+		hasCompletedPrimary := false
+		hasActiveDeployment := false
 		for _, deployment := range service.Deployments {
 			// Set up logger with the deployment identifier.
-			deploymentSublogger := serviceSublogger.WithField("deployment-id", deployment.Id)
+			deploymentSublogger := serviceSublogger.WithField("deployment-id", *deployment.Id)
 			deploymentSublogger.Infof("watching ... service: %s, deployment: %s, rollout: %d/%d (%d pending)", strings.ToLower(*service.Status), strings.ToLower(*deployment.Status), deployment.RunningCount, deployment.DesiredCount, deployment.PendingCount)
 
-			// PRIMARY The most recent deployment of a service. ACTIVE A service
-			// deployment that still has running tasks, but are in the process
-			// of being replaced with a new PRIMARY deployment. INACTIVE A
-			// deployment that has been completely replaced.
-			//
+			// If the
+			if (*deployment.Status == "PRIMARY") && (deployment.RolloutState == types.DeploymentRolloutStateCompleted) {
+				hasCompletedPrimary = true
+			}
+
 			// If a service has an ACTIVE deployment then that means that it's
 			// still being rolled out.
 			if *deployment.Status == "ACTIVE" {
-				activeService = true
+				hasActiveDeployment = true
 			}
 		}
 
-		// If the service is active then there's no need to watch it any
-		// longer.
-		if activeService {
-			serviceSublogger.Infof("service is active")
+		// If the service's PRIMARY is in a completed state and the doesn't have
+		// an ACTIVE deployment then the rollout is done and there's no need to
+		// watch it any longer.
+		if hasCompletedPrimary && !hasActiveDeployment {
+			serviceSublogger.Infof("service deployment rollout completed")
 
 			break
 		}
