@@ -140,7 +140,9 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	taskSublogger.Infof("attempting to run new task, desired count: %d", *taskConfig.Count)
 	runTaskResult, err := client.RunTask(context.TODO(), runTaskParams)
 	if err != nil {
-		taskSublogger.Fatalf("unable to run new task, desired count: %d: %v", *taskConfig.Count, err)
+		taskSublogger.Errorf("unable to run new task, desired count: %d: %v", *taskConfig.Count, err)
+
+		return
 	}
 	taskSublogger.Infof("running new task, desired count: %d", *taskConfig.Count)
 
@@ -171,7 +173,9 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 		o.LogWaitAttempts = log.IsLevelEnabled(log.DebugLevel) || log.IsLevelEnabled(log.TraceLevel)
 	})
 	if err != nil {
-		taskSublogger.Fatalf("unable to check final status of all tasks: %v", err)
+		taskSublogger.Errorf("unable to check final status of all tasks: %v", err)
+
+		return
 	}
 
 	// Determine if the rollout should stop or not. If some containers had
@@ -186,7 +190,9 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	}
 
 	if nonZeroExitContainerCount != 0 {
-		taskSublogger.Fatalf("checked final status, %d failed", nonZeroExitContainerCount)
+		taskSublogger.Errorf("checked final status, %d failed", nonZeroExitContainerCount)
+
+		return
 	}
 	taskSublogger.Info("checked final status, all successful")
 }
@@ -203,7 +209,9 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 		}
 		taskResult, err := client.DescribeTasks(context.TODO(), taskParams)
 		if err != nil {
-			logger.Fatalf("unable to fetch task profile: %v", err)
+			logger.Errorf("unable to fetch task profile: %v", err)
+
+			return
 		}
 
 		// If the task is not found or it has been deleted then stop watching

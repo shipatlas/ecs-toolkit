@@ -52,13 +52,17 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	}
 	serviceResult, err := client.DescribeServices(context.TODO(), serviceParams)
 	if err != nil {
-		serviceSublogger.Fatalf("unable to fetch service profile: %v", err)
+		serviceSublogger.Errorf("unable to fetch service profile: %v", err)
+
+		return
 	}
 
 	// If the service is not found then stop deploying to the service. We should
 	// also only ever receive one service.
 	if len(serviceResult.Services) == 0 {
-		serviceSublogger.Info("stopped deploy, service not found")
+		serviceSublogger.Error("skipping deploy, service not found")
+
+		return
 	}
 	service := serviceResult.Services[0]
 
@@ -109,7 +113,9 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	serviceSublogger.Info("attempting to update service")
 	_, err = client.UpdateService(context.TODO(), updateServiceParams)
 	if err != nil {
-		serviceSublogger.Fatalf("unable to update service: %v", err)
+		serviceSublogger.Errorf("unable to update service: %v", err)
+
+		return
 	}
 	serviceSublogger.Info("updated service successfully")
 
@@ -127,7 +133,9 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		o.LogWaitAttempts = log.IsLevelEnabled(log.DebugLevel) || log.IsLevelEnabled(log.TraceLevel)
 	})
 	if err != nil {
-		serviceSublogger.Fatalf("unable to check if all services are stable: %v", err)
+		serviceSublogger.Errorf("unable to check if all services are stable: %v", err)
+
+		return
 
 	}
 }
@@ -142,13 +150,15 @@ func watchService(cluster *string, service *types.Service, client *ecs.Client, s
 		}
 		serviceResult, err := client.DescribeServices(context.TODO(), serviceParams)
 		if err != nil {
-			serviceSublogger.Fatalf("unable to fetch service profile: %v", err)
+			serviceSublogger.Errorf("unable to fetch service profile: %v", err)
+
+			break
 		}
 
-		// If the service is not found then stop deploying to the service. We should
-		// also only ever receive one service.
+		// If the service is not found then stop watching the service. We should
+		// also only ever receive one service anyway.
 		if len(serviceResult.Services) == 0 {
-			serviceSublogger.Info("stopped deploy, service not found")
+			serviceSublogger.Error("stopped watching, service not found")
 
 			break
 		}

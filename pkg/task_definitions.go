@@ -45,7 +45,9 @@ func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Clie
 	}
 	taskDefinitionResult, err := client.DescribeTaskDefinition(context.TODO(), taskDefinitionParams)
 	if err != nil {
-		logger.Fatalf("unable to fetch task definition profile: %v", err)
+		logger.Errorf("unable to fetch task definition profile: %v", err)
+
+		return nil, false
 	}
 
 	// Copy details of the task definition to use a foundation for the new
@@ -95,7 +97,9 @@ func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Clie
 		oldContainerImage := *containerDefinition.Image
 		parsedImage, err := dockerparser.Parse(oldContainerImage)
 		if err != nil {
-			containerSublogger.Fatalf("unable to parse current container image %s: %v", oldContainerImage, err)
+			containerSublogger.Errorf("unable to parse current container image %s: %v", oldContainerImage, err)
+
+			return nil, false
 		}
 		oldContainerImageTag := parsedImage.Tag()
 		newContainerImageTag := input.ImageTag
@@ -129,7 +133,9 @@ func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Clie
 	logger.Info("registering new task definition")
 	registerTaskDefinitionResult, err := client.RegisterTaskDefinition(context.TODO(), registerTaskDefinitionParams)
 	if err != nil {
-		logger.Fatalf("unable to register new task definition: %v", err)
+		logger.Errorf("unable to register new task definition: %v", err)
+
+		return nil, false
 	}
 	newTaskDefinition := fmt.Sprintf("%s:%d", *registerTaskDefinitionResult.TaskDefinition.Family, registerTaskDefinitionResult.TaskDefinition.Revision)
 	logger.Infof("successfully registered new task definition %s", newTaskDefinition)
