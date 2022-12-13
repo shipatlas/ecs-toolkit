@@ -54,6 +54,11 @@ var deployCmd = &cobra.Command{
 	Short:   "Deploy an application to AWS ECS.",
 	Long:    deployCmdLong,
 	Example: deployCmdExamples,
+	Args: func(cmd *cobra.Command, args []string) error {
+		err := cobra.NoArgs(cmd, args)
+
+		return err
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		deployCmdOptions.validate()
 		deployCmdOptions.run()
