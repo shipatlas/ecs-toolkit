@@ -87,6 +87,13 @@ func (options *deployOptions) run() {
 	}
 	client := ecs.NewFromConfig(awsCfg)
 
-	toolConfig.DeployTasks(&options.imageTag, client)
-	toolConfig.DeployServices(&options.imageTag, client)
+	err = toolConfig.DeployTasks(&options.imageTag, client)
+	if err != nil {
+		log.Fatal("error deploying tasks, exiting!")
+	}
+
+	err = toolConfig.DeployServices(&options.imageTag, client)
+	if err != nil {
+		log.Fatal("error deploying services, exiting!")
+	}
 }

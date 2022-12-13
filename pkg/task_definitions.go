@@ -50,9 +50,9 @@ type GenerateTaskDefinitionInput struct {
 	UpdateableContainers map[string]bool
 }
 
-func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Client, logger *log.Entry) (*types.TaskDefinition, bool) {
+func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Client, logger *log.Entry) (*types.TaskDefinition, bool, error) {
 	// Fetch full profile of the latest task definition.
-	logger.Info("fetching task definition profile")
+	logger.Debug("fetching task definition profile")
 	taskDefinitionParams := &ecs.DescribeTaskDefinitionInput{
 		TaskDefinition: input.TaskDefinition,
 		Include: []types.TaskDefinitionField{
@@ -63,7 +63,7 @@ func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Clie
 	if err != nil {
 		logger.Errorf("unable to fetch task definition profile: %v", err)
 
-		return nil, false
+		return nil, false, err
 	}
 
 	// Copy details of the task definition to use a foundation for the new
@@ -115,7 +115,7 @@ func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Clie
 		if err != nil {
 			containerSublogger.Errorf("unable to parse current container image %s: %v", oldContainerImage, err)
 
-			return nil, false
+			return nil, false, err
 		}
 		oldContainerImageTag := parsedImage.Tag()
 		newContainerImageTag := input.ImageTag
@@ -141,7 +141,7 @@ func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Clie
 	if !taskDefinitionUpdated {
 		logger.Warn("skipping registering new task definition, no changes")
 
-		return nil, false
+		return nil, false, err
 	}
 
 	// Register a new updated version of the task definition i.e. with new
@@ -151,10 +151,10 @@ func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Clie
 	if err != nil {
 		logger.Errorf("unable to register new task definition: %v", err)
 
-		return nil, false
+		return nil, false, err
 	}
 	newTaskDefinition := fmt.Sprintf("%s:%d", *registerTaskDefinitionResult.TaskDefinition.Family, registerTaskDefinitionResult.TaskDefinition.Revision)
 	logger.Infof("successfully registered new task definition %s", newTaskDefinition)
 
-	return registerTaskDefinitionResult.TaskDefinition, taskDefinitionUpdated
+	return registerTaskDefinitionResult.TaskDefinition, taskDefinitionUpdated, nil
 }
