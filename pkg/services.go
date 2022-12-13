@@ -18,6 +18,7 @@ package pkg
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +29,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.Client) {
+func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.Client) error {
 	clusterSublogger := log.WithFields(log.Fields{"cluster": *config.Cluster})
 	clusterSublogger.Info("starting rollout to services")
 
@@ -37,7 +38,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	if len(config.Services) == 0 {
 		clusterSublogger.Warn("skipping rollout to services, none found")
 
-		return
+		return nil
 	}
 
 	// Process each service on its own asynchronously to reduce the amount of
@@ -51,6 +52,8 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	wg.Wait()
 
 	clusterSublogger.Info("completed rollout to services")
+
+	return nil
 }
 
 func deployService(cluster *string, serviceConfig *Service, newContainerImageTag *string, client *ecs.Client, logger *log.Entry, deployWg *sync.WaitGroup) {

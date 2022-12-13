@@ -29,7 +29,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Client) {
+func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Client) error {
 	clusterSublogger := log.WithFields(log.Fields{"cluster": *config.Cluster})
 	clusterSublogger.Info("starting rollout to tasks")
 
@@ -38,7 +38,7 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 	if len(config.Tasks) == 0 {
 		clusterSublogger.Warn("skipping rollout to tasks, none found")
 
-		return
+		return nil
 	}
 
 	// Process each task on its own asynchronously to reduce the amount of time
@@ -53,6 +53,8 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 	wg.Wait()
 
 	clusterSublogger.Info("completed rollout to tasks")
+
+	return nil
 }
 
 func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, logger *log.Entry, deployWg *sync.WaitGroup) {
