@@ -52,7 +52,7 @@ type GenerateTaskDefinitionInput struct {
 
 func GenerateTaskDefinition(input *GenerateTaskDefinitionInput, client *ecs.Client, logger *log.Entry) (*types.TaskDefinition, bool, error) {
 	// Fetch full profile of the latest task definition.
-	logger.Info("fetching task definition profile")
+	logger.Debug("fetching task definition profile")
 	taskDefinitionParams := &ecs.DescribeTaskDefinitionInput{
 		TaskDefinition: input.TaskDefinition,
 		Include: []types.TaskDefinitionField{

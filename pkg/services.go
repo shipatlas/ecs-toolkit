@@ -72,6 +72,8 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		return err
 	}
 
+	clusterSublogger.Info("completed rollout to services")
+
 	return nil
 }
 
@@ -81,7 +83,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 
 	// Fetch full profile of the service so that later we can reference its
 	// attributes i.e. task definitions.
-	serviceSublogger.Info("fetching service profile")
+	serviceSublogger.Debug("fetching service profile")
 	serviceParams := &ecs.DescribeServicesInput{
 		Cluster:  cluster,
 		Services: []string{*serviceConfig.Name},
@@ -152,7 +154,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	}
 
 	// Update service to reflect changes.
-	serviceSublogger.Info("attempting to update service")
+	serviceSublogger.Debug("attempting to update service")
 	_, err = client.UpdateService(context.TODO(), updateServiceParams)
 	if err != nil {
 		serviceSublogger.Errorf("unable to update service: %v", err)
@@ -161,12 +163,12 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	}
 	serviceSublogger.Info("updated service successfully")
 
-	// Watch each service deployment until all have a final status.
-	serviceSublogger.Info("watch rollout progress of services")
+	// Watch service deployment until all have a final status.
+	serviceSublogger.Info("watch service rollout progress")
 	watchService(cluster, &service, client, serviceSublogger)
 
-	// Make sure we wait for rollout of all services.
-	serviceSublogger.Info("checking if all services are stable")
+	// Make sure we wait for the service to be stable.
+	serviceSublogger.Info("checking if service is stable")
 	waiter := ecs.NewServicesStableWaiter(client)
 	maxWaitTime := 15 * time.Minute
 	err = waiter.Wait(context.TODO(), serviceParams, maxWaitTime, func(o *ecs.ServicesStableWaiterOptions) {
@@ -175,13 +177,13 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		o.LogWaitAttempts = log.IsLevelEnabled(log.DebugLevel) || log.IsLevelEnabled(log.TraceLevel)
 	})
 	if err != nil {
-		serviceSublogger.Errorf("unable to check if all services are stable: %v", err)
+		serviceSublogger.Errorf("unable to check if service is stable: %v", err)
 
 		return err
 
 	}
 
-	serviceSublogger.Info("checked final status, stable")
+	serviceSublogger.Info("service is stable")
 
 	return nil
 }
@@ -221,23 +223,21 @@ func watchService(cluster *string, service *types.Service, client *ecs.Client, s
 			deploymentSublogger := serviceSublogger.WithField("deployment-id", *deployment.Id)
 			deploymentSublogger.Infof("watching ... service: %s, deployment: %s, rollout: %d/%d (%d pending)", strings.ToLower(*service.Status), strings.ToLower(*deployment.Status), deployment.RunningCount, deployment.DesiredCount, deployment.PendingCount)
 
-			// If the
 			if (*deployment.Status == "PRIMARY") && (deployment.RolloutState == types.DeploymentRolloutStateCompleted) {
 				hasCompletedPrimary = true
 			}
 
-			// If a service has an ACTIVE deployment then that means that it's
-			// still being rolled out.
 			if *deployment.Status == "ACTIVE" {
 				hasActiveDeployment = true
 			}
 		}
 
-		// If the service's PRIMARY is in a completed state and the doesn't have
-		// an ACTIVE deployment then the rollout is done and there's no need to
-		// watch it any longer.
+		// A service has an ACTIVE deployment if it is still being rolled out.
+		// but if the service's PRIMARY is in a completed state and it doesn't
+		// have an ACTIVE deployment then the rollout is done and there's no
+		// need to watch it any longer.
 		if hasCompletedPrimary && !hasActiveDeployment {
-			serviceSublogger.Infof("service deployment rollout completed")
+			serviceSublogger.Debugf("primary deployment completed, no active deployment")
 
 			break
 		}

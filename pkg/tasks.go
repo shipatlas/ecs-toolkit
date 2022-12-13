@@ -73,6 +73,8 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 		return err
 	}
 
+	clusterSublogger.Info("completed rollout to tasks")
+
 	return nil
 }
 
@@ -177,7 +179,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	}
 
 	// Starts task(s) using the specified parameters.
-	taskSublogger.Infof("attempting to run new task, desired count: %d", *taskConfig.Count)
+	taskSublogger.Debugf("attempting to run new task, desired count: %d", *taskConfig.Count)
 	runTaskResult, err := client.RunTask(context.TODO(), runTaskParams)
 	if err != nil {
 		taskSublogger.Errorf("unable to run new task, desired count: %d: %v", *taskConfig.Count, err)
