@@ -18,6 +18,7 @@ package pkg
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"sync"
@@ -35,7 +36,8 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 
 	// Get list of tasks to update from the config file but do not proceed if
 	// there are no tasks to update.
-	if len(config.Tasks) == 0 {
+	numberOfTasks := len(config.Tasks)
+	if numberOfTasks == 0 {
 		clusterSublogger.Warn("skipping rollout to tasks, none found")
 
 		return nil
@@ -45,21 +47,36 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 	// spent rolling them out. Tasks are short-lived deployment steps that are
 	// pre-requisites to the deployment. It's worth noting that all tasks must
 	// complete before the deployment starts.
+	taskDeployErrors := make(chan error, numberOfTasks)
 	wg := sync.WaitGroup{}
-	wg.Add(len(config.Tasks))
-	for _, taskConfig := range config.Tasks {
-		go deployTask(config.Cluster, taskConfig, newContainerImageTag, client, clusterSublogger, &wg)
+	wg.Add(numberOfTasks)
+	for index := range config.Tasks {
+		go func(taskConfig *Task) {
+			defer wg.Done()
+
+			err := deployTask(config.Cluster, taskConfig, newContainerImageTag, client, clusterSublogger)
+			if err != nil {
+				taskDeployErrors <- err
+			}
+		}(config.Tasks[index])
 	}
 	wg.Wait()
+	close(taskDeployErrors)
 
-	clusterSublogger.Info("completed rollout to tasks")
+	failedCount := len(taskDeployErrors)
+	completedCount := numberOfTasks - len(taskDeployErrors)
+	clusterSublogger.Infof("tasks report - total: %d, successful: %d, failed: %d", numberOfTasks, completedCount, failedCount)
+
+	if failedCount > 0 {
+		err := fmt.Errorf("unable to deploy all tasks")
+
+		return err
+	}
 
 	return nil
 }
 
-func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, logger *log.Entry, deployWg *sync.WaitGroup) {
-	defer deployWg.Done()
-
+func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) error {
 	// Set up new logger with the task family.
 	taskSublogger := logger.WithField("task", *taskConfig.Family)
 
@@ -75,7 +92,12 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 		TaskDefinition:       taskConfig.Family,
 		UpdateableContainers: taskContainerUpdateable,
 	}
-	newTaskDefinition, taskDefinitionUpdated := GenerateTaskDefinition(&taskDefinitionInput, client, taskSublogger)
+	newTaskDefinition, taskDefinitionUpdated, err := GenerateTaskDefinition(&taskDefinitionInput, client, taskSublogger)
+	if err != nil {
+		taskSublogger.Errorf("error generating task definition")
+
+		return err
+	}
 
 	// Prepare parameters for task.
 	taskSublogger.Info("preparing running task parameters")
@@ -160,64 +182,44 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	if err != nil {
 		taskSublogger.Errorf("unable to run new task, desired count: %d: %v", *taskConfig.Count, err)
 
-		return
+		return err
 	}
 	taskSublogger.Infof("running new task, desired count: %d", *taskConfig.Count)
 
 	// Watch each task on its own asynchronously. The number of tasks depends on
 	// the count that was set. All tasks should be watched.
+	numberOfTasks := len(runTaskResult.Tasks)
+	taskWatchErrors := make(chan error, numberOfTasks)
 	wg := sync.WaitGroup{}
-	wg.Add(len(runTaskResult.Tasks))
-	watchedTaskArns := []string{}
-	for index, waitedOnTask := range runTaskResult.Tasks {
+	wg.Add(numberOfTasks)
+	for index := range runTaskResult.Tasks {
 		taskNo := index + 1
-		watchedTaskArns = append(watchedTaskArns, *waitedOnTask.TaskArn)
-		go watchTask(cluster, &taskNo, &waitedOnTask, client, taskSublogger, &wg)
+
+		go func(taskNo int, waitedOnTask types.Task) {
+			defer wg.Done()
+
+			err := watchTask(cluster, &taskNo, &waitedOnTask, client, taskSublogger)
+			if err != nil {
+				taskWatchErrors <- err
+			}
+		}(taskNo, runTaskResult.Tasks[index])
 	}
 	wg.Wait()
+	close(taskWatchErrors)
 
-	// Make sure we wait for rollout of all tasks. It should take long because
-	// they should have anyway (since they were watched until they stopped).
-	taskSublogger.Info("checking final status of all tasks")
-	waiter := ecs.NewTasksStoppedWaiter(client)
-	maxWaitTime := 15 * time.Minute
-	taskParams := &ecs.DescribeTasksInput{
-		Cluster: cluster,
-		Tasks:   watchedTaskArns,
-	}
-	waitForOutputResult, err := waiter.WaitForOutput(context.TODO(), taskParams, maxWaitTime, func(o *ecs.TasksStoppedWaiterOptions) {
-		o.MinDelay = 5 * time.Second
-		o.MaxDelay = 120 * time.Second
-		o.LogWaitAttempts = log.IsLevelEnabled(log.DebugLevel) || log.IsLevelEnabled(log.TraceLevel)
-	})
-	if err != nil {
-		taskSublogger.Errorf("unable to check final status of all tasks: %v", err)
+	failedCount := len(taskWatchErrors)
+	if failedCount > 0 {
+		err := fmt.Errorf("unable to run all tasks")
 
-		return
+		return err
 	}
 
-	// Determine if the rollout should stop or not. If some containers had
-	// non-zero exits then we should not continue and assume failure.
-	nonZeroExitContainerCount := 0
-	for _, waitedForTask := range waitForOutputResult.Tasks {
-		for _, container := range waitedForTask.Containers {
-			if *container.ExitCode != 0 {
-				nonZeroExitContainerCount = nonZeroExitContainerCount + 1
-			}
-		}
-	}
+	taskSublogger.Infof("tasks ran to completion, desired count: %d", *taskConfig.Count)
 
-	if nonZeroExitContainerCount != 0 {
-		taskSublogger.Errorf("checked final status, %d failed", nonZeroExitContainerCount)
-
-		return
-	}
-	taskSublogger.Info("checked final status, all successful")
+	return nil
 }
 
-func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Client, logger *log.Entry, watchWg *sync.WaitGroup) {
-	defer watchWg.Done()
-
+func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Client, logger *log.Entry) error {
 	ticker := time.NewTicker(time.Second * 3).C
 
 	for {
@@ -229,7 +231,7 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 		if err != nil {
 			logger.Errorf("unable to fetch task profile: %v", err)
 
-			return
+			return err
 		}
 
 		// If the task is not found or it has been deleted then stop watching
@@ -255,19 +257,36 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 		// STOPPED. If the task has stopped then there's no need to watch it any
 		// longer.
 		if *task.LastStatus == "STOPPED" {
+			nonZeroExit := false
 			for _, container := range task.Containers {
 				containerReason := "none"
+
+				if container.ExitCode != nil && *container.ExitCode != 0 {
+					nonZeroExit = true
+				}
+
 				if container.Reason != nil {
 					containerReason = strings.ToLower(*container.Reason)
 				}
 
-				taskSublogger.Infof("stopped task [%d] container [%s] ... exit code: %d, reason: %s", *taskNo, *container.Name, *container.ExitCode, containerReason)
+				taskSublogger.Debugf("stopped task [%d] container [%s] ... exit code: %d, reason: %s", *taskNo, *container.Name, *container.ExitCode, containerReason)
 			}
-			taskSublogger.Infof("stopped task [%d] ... reason: %s", *taskNo, strings.ToLower(string(*task.StoppedReason)))
+
+			exitMessage := fmt.Sprintf("stopped task [%d], reason: %s", *taskNo, strings.ToLower(string(*task.StoppedReason)))
+			if nonZeroExit {
+				err := fmt.Errorf("prematurely %s", exitMessage)
+				taskSublogger.Error(err)
+
+				return err
+			} else {
+				taskSublogger.Infof("successfully %s", exitMessage)
+			}
 
 			break
 		}
 
 		<-ticker
 	}
+
+	return nil
 }

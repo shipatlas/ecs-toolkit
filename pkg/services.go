@@ -19,6 +19,7 @@ package pkg
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -35,7 +36,8 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 
 	// Get list of services to update from the config file but do not proceed if
 	// there are no services to update.
-	if len(config.Services) == 0 {
+	numberOfServices := len(config.Services)
+	if numberOfServices == 0 {
 		clusterSublogger.Warn("skipping rollout to services, none found")
 
 		return nil
@@ -44,21 +46,36 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	// Process each service on its own asynchronously to reduce the amount of
 	// time spent rolling them out. We should update each service at the same
 	// time.
+	serviceDeployErrors := make(chan error, numberOfServices)
 	wg := sync.WaitGroup{}
-	wg.Add(len(config.Services))
-	for _, serviceConfig := range config.Services {
-		go deployService(config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger, &wg)
+	wg.Add(numberOfServices)
+	for index := range config.Services {
+		go func(serviceConfig *Service) {
+			defer wg.Done()
+
+			err := deployService(config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger)
+			if err != nil {
+				serviceDeployErrors <- err
+			}
+		}(config.Services[index])
 	}
 	wg.Wait()
+	close(serviceDeployErrors)
 
-	clusterSublogger.Info("completed rollout to services")
+	failedCount := len(serviceDeployErrors)
+	completedCount := numberOfServices - len(serviceDeployErrors)
+	clusterSublogger.Infof("services report - total: %d, successful: %d, failed: %d", numberOfServices, completedCount, failedCount)
+
+	if failedCount > 0 {
+		err := fmt.Errorf("unable to deploy all services")
+
+		return err
+	}
 
 	return nil
 }
 
-func deployService(cluster *string, serviceConfig *Service, newContainerImageTag *string, client *ecs.Client, logger *log.Entry, deployWg *sync.WaitGroup) {
-	defer deployWg.Done()
-
+func deployService(cluster *string, serviceConfig *Service, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) error {
 	// Set up new logger with the service name.
 	serviceSublogger := logger.WithField("service", *serviceConfig.Name)
 
@@ -73,15 +90,16 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	if err != nil {
 		serviceSublogger.Errorf("unable to fetch service profile: %v", err)
 
-		return
+		return err
 	}
 
 	// If the service is not found then stop deploying to the service. We should
 	// also only ever receive one service.
 	if len(serviceResult.Services) == 0 {
-		serviceSublogger.Error("skipping deploy, service not found")
+		err = errors.New("skipping deploy, service not found")
+		serviceSublogger.Error(err)
 
-		return
+		return err
 	}
 	service := serviceResult.Services[0]
 
@@ -97,7 +115,12 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		TaskDefinition:       service.TaskDefinition,
 		UpdateableContainers: taskContainerUpdateable,
 	}
-	newTaskDefinition, taskDefinitionUpdated := GenerateTaskDefinition(&taskDefinitionInput, client, serviceSublogger)
+	newTaskDefinition, taskDefinitionUpdated, err := GenerateTaskDefinition(&taskDefinitionInput, client, serviceSublogger)
+	if err != nil {
+		serviceSublogger.Errorf("error generating task definition")
+
+		return err
+	}
 
 	// Prepare parameters for service.
 	updateServiceParams := &ecs.UpdateServiceInput{
@@ -134,7 +157,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	if err != nil {
 		serviceSublogger.Errorf("unable to update service: %v", err)
 
-		return
+		return err
 	}
 	serviceSublogger.Info("updated service successfully")
 
@@ -154,9 +177,13 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	if err != nil {
 		serviceSublogger.Errorf("unable to check if all services are stable: %v", err)
 
-		return
+		return err
 
 	}
+
+	serviceSublogger.Info("checked final status, stable")
+
+	return nil
 }
 
 func watchService(cluster *string, service *types.Service, client *ecs.Client, serviceSublogger *log.Entry) {
