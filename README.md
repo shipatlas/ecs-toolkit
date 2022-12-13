@@ -93,13 +93,15 @@ For normal usage the above instructions should do.
 
 ## License
 
-[ShipAtlas][shipatlas] © 2022. The [MIT License bundled therein][license] is a
-permissive license that is short and to the point. It lets people do anything
-they want as long as they provide attribution and waive liability.
+[King'ori Maina][kingori] © 2022. The [Apache 2.0 License bundled therein][license]
+whose main conditions require preservation of copyright and license notices.
+Contributors provide an express grant of patent rights. Licensed works,
+modifications, and larger works may be distributed under different terms and
+without source code.
 
 [aws-configuration-cli]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html
 [aws-configuration-sdk]: https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/
 [golang-quickstart]: https://go.dev/doc/tutorial/getting-started
 [golangci-lint-install]: https://golangci-lint.run/usage/install/
-[license]: https://raw.githubusercontent.com/shipatlas/ecs-toolkit/main/LICENSE
-[shipatlas]: https://www.shipatlas.dev
+[kingori]: https://kingori.co
+[license]: https://github.com/shipatlas/ecs-toolkit/blob/main/LICENSE.txt
