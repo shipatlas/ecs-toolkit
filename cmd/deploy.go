@@ -29,7 +29,8 @@ import (
 )
 
 type deployOptions struct {
-	imageTag string
+	imageTag  string
+	skipTasks bool
 }
 
 var (
@@ -38,7 +39,11 @@ var (
 
 	deployCmdExamples = utils.Examples(`
 		# Deploy new revision of an application
-		ecs-toolkit deploy --image-tag=5a853f72`)
+		ecs-toolkit deploy --image-tag=5a853f72
+		
+		# Deploy new revision of an application but only update the services 
+		# specified in the config, skips tasks
+		ecs-toolkit deploy --image-tag=5a853f72 --skip-tasks`)
 
 	deployCmdOptions = &deployOptions{}
 )
@@ -60,6 +65,7 @@ func init() {
 
 	// Local flags, which, will be global for the application.
 	deployCmd.Flags().StringVarP(&deployCmdOptions.imageTag, "image-tag", "t", "", "image tag to update the container images to")
+	deployCmd.Flags().BoolVar(&deployCmdOptions.skipTasks, "skip-tasks", false, "skips tasks, limiting deployment to services")
 
 	// Configure required flags, applying to this specific command.
 	deployCmd.MarkFlagRequired("image-tag")
@@ -87,9 +93,11 @@ func (options *deployOptions) run() {
 	}
 	client := ecs.NewFromConfig(awsCfg)
 
-	err = toolConfig.DeployTasks(&options.imageTag, client)
-	if err != nil {
-		log.Fatal("error deploying tasks, exiting!")
+	if !options.skipTasks {
+		err = toolConfig.DeployTasks(&options.imageTag, client)
+		if err != nil {
+			log.Fatal("error deploying tasks, exiting!")
+		}
 	}
 
 	err = toolConfig.DeployServices(&options.imageTag, client)
