@@ -64,3 +64,12 @@ func (config *Config) ServiceNames() []string {
 
 	return serviceNames
 }
+
+func (config *Config) TaskFamilies() []string {
+	taskFamilies := []string{}
+	for _, task := range config.Tasks {
+		taskFamilies = append(taskFamilies, *task.Family)
+	}
+
+	return taskFamilies
+}
