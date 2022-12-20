@@ -31,7 +31,7 @@ import (
 )
 
 func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.Client) error {
-	clusterSublogger := log.WithFields(log.Fields{"cluster": *config.Cluster})
+	clusterSublogger := log.WithFields(log.Fields{"cluster": config.Cluster})
 	clusterSublogger.Info("starting rollout to services")
 
 	// Get list of services to update from the config file but do not proceed if
@@ -53,11 +53,11 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		go func(serviceConfig *Service) {
 			defer wg.Done()
 
-			err := deployService(config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger)
+			err := deployService(&config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger)
 			if err != nil {
 				serviceDeployErrors <- err
 			}
-		}(config.Services[index])
+		}(&config.Services[index])
 	}
 	wg.Wait()
 	close(serviceDeployErrors)
@@ -79,14 +79,14 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 
 func deployService(cluster *string, serviceConfig *Service, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) error {
 	// Set up new logger with the service name.
-	serviceSublogger := logger.WithField("service", *serviceConfig.Name)
+	serviceSublogger := logger.WithField("service", serviceConfig.Name)
 
 	// Fetch full profile of the service so that later we can reference its
 	// attributes i.e. task definitions.
 	serviceSublogger.Debug("fetching service profile")
 	serviceParams := &ecs.DescribeServicesInput{
 		Cluster:  cluster,
-		Services: []string{*serviceConfig.Name},
+		Services: []string{serviceConfig.Name},
 	}
 	serviceResult, err := client.DescribeServices(context.TODO(), serviceParams)
 	if err != nil {
@@ -108,7 +108,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	// Store information on which containers should be updated.
 	taskContainerUpdateable := make(map[string]bool)
 	for _, containerName := range serviceConfig.Containers {
-		taskContainerUpdateable[*containerName] = true
+		taskContainerUpdateable[containerName] = true
 	}
 
 	// Generate new task definition with the required changes.
@@ -133,7 +133,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		DesiredCount:                  &service.DesiredCount,
 		EnableECSManagedTags:          &service.EnableECSManagedTags,
 		EnableExecuteCommand:          &service.EnableECSManagedTags,
-		ForceNewDeployment:            *serviceConfig.Force,
+		ForceNewDeployment:            serviceConfig.Force,
 		HealthCheckGracePeriodSeconds: service.HealthCheckGracePeriodSeconds,
 		LoadBalancers:                 service.LoadBalancers,
 		NetworkConfiguration:          service.NetworkConfiguration,
@@ -150,7 +150,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		updateServiceParams.TaskDefinition = newTaskDefinition.TaskDefinitionArn
 	} else {
 		serviceSublogger.Info("no changes to previous task definition, using latest")
-		updateServiceParams.TaskDefinition = serviceConfig.Name
+		updateServiceParams.TaskDefinition = &serviceConfig.Name
 	}
 
 	// Update service to reflect changes.

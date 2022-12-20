@@ -31,7 +31,7 @@ import (
 )
 
 func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Client) error {
-	clusterSublogger := log.WithFields(log.Fields{"cluster": *config.Cluster})
+	clusterSublogger := log.WithFields(log.Fields{"cluster": config.Cluster})
 	clusterSublogger.Info("starting rollout to tasks")
 
 	// Get list of tasks to update from the config file but do not proceed if
@@ -54,11 +54,11 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 		go func(taskConfig *Task) {
 			defer wg.Done()
 
-			err := deployTask(config.Cluster, taskConfig, newContainerImageTag, client, clusterSublogger)
+			err := deployTask(&config.Cluster, taskConfig, newContainerImageTag, client, clusterSublogger)
 			if err != nil {
 				taskDeployErrors <- err
 			}
-		}(config.Tasks[index])
+		}(&config.Tasks[index])
 	}
 	wg.Wait()
 	close(taskDeployErrors)
@@ -80,18 +80,18 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 
 func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) error {
 	// Set up new logger with the task family.
-	taskSublogger := logger.WithField("task", *taskConfig.Family)
+	taskSublogger := logger.WithField("task", taskConfig.Family)
 
 	// Store information on which containers should be updated.
 	taskContainerUpdateable := make(map[string]bool)
 	for _, containerName := range taskConfig.Containers {
-		taskContainerUpdateable[*containerName] = true
+		taskContainerUpdateable[containerName] = true
 	}
 
 	// Generate new task definition with the required changes.
 	taskDefinitionInput := GenerateTaskDefinitionInput{
 		ImageTag:             newContainerImageTag,
-		TaskDefinition:       taskConfig.Family,
+		TaskDefinition:       &taskConfig.Family,
 		UpdateableContainers: taskContainerUpdateable,
 	}
 	newTaskDefinition, taskDefinitionUpdated, err := GenerateTaskDefinition(&taskDefinitionInput, client, taskSublogger)
@@ -105,7 +105,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	taskSublogger.Info("preparing running task parameters")
 	runTaskParams := &ecs.RunTaskInput{
 		Cluster:              cluster,
-		Count:                taskConfig.Count,
+		Count:                &taskConfig.Count,
 		EnableECSManagedTags: true,
 		EnableExecuteCommand: false,
 		PropagateTags:        types.PropagateTagsTaskDefinition,
@@ -117,18 +117,18 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 		runTaskParams.TaskDefinition = newTaskDefinition.TaskDefinitionArn
 	} else {
 		taskSublogger.Info("no changes to previous task definition, using latest")
-		runTaskParams.TaskDefinition = taskConfig.Family
+		runTaskParams.TaskDefinition = &taskConfig.Family
 	}
 
 	// Set capacity provider strategies.
-	if taskConfig.CapacityProviderStrategies != nil {
+	if len(taskConfig.CapacityProviderStrategies) > 0 {
 		taskSublogger.Debug("setting capacity provider strategies")
 		capacityProviders := []types.CapacityProviderStrategyItem{}
 		for _, capacityProviderStrategy := range taskConfig.CapacityProviderStrategies {
 			capacityProviders = append(capacityProviders, types.CapacityProviderStrategyItem{
-				CapacityProvider: capacityProviderStrategy.CapacityProvider,
-				Base:             *capacityProviderStrategy.Base,
-				Weight:           *capacityProviderStrategy.Weight,
+				CapacityProvider: &capacityProviderStrategy.CapacityProvider,
+				Base:             capacityProviderStrategy.Base,
+				Weight:           capacityProviderStrategy.Weight,
 			})
 		}
 
@@ -137,7 +137,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 
 	// Set launch type.
 	if taskConfig.LaunchType != nil {
-		taskSublogger.Debugf("setting launch type to %s", *taskConfig.LaunchType)
+		taskSublogger.Debugf("setting launch type to %s", taskConfig.LaunchType)
 		switch *taskConfig.LaunchType {
 		case "ec2":
 			runTaskParams.LaunchType = types.LaunchTypeEc2
@@ -153,25 +153,15 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 		taskSublogger.Debug("setting network configuration")
 
 		assignPublicIP := types.AssignPublicIpDisabled
-		if *taskConfig.NetworkConfiguration.VpcConfiguration.AssignPublicIP {
+		if taskConfig.NetworkConfiguration.VpcConfiguration.AssignPublicIP {
 			assignPublicIP = types.AssignPublicIpEnabled
-		}
-
-		securityGroups := []string{}
-		for _, securityGroup := range taskConfig.NetworkConfiguration.VpcConfiguration.SecurityGroups {
-			securityGroups = append(securityGroups, *securityGroup)
-		}
-
-		subnets := []string{}
-		for _, subnet := range taskConfig.NetworkConfiguration.VpcConfiguration.Subnets {
-			subnets = append(subnets, *subnet)
 		}
 
 		networkConfiguration := &types.NetworkConfiguration{
 			AwsvpcConfiguration: &types.AwsVpcConfiguration{
-				Subnets:        subnets,
 				AssignPublicIp: assignPublicIP,
-				SecurityGroups: securityGroups,
+				SecurityGroups: taskConfig.NetworkConfiguration.VpcConfiguration.SecurityGroups,
+				Subnets:        taskConfig.NetworkConfiguration.VpcConfiguration.Subnets,
 			},
 		}
 
@@ -179,14 +169,14 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	}
 
 	// Starts task(s) using the specified parameters.
-	taskSublogger.Debugf("attempting to run new task, desired count: %d", *taskConfig.Count)
+	taskSublogger.Debugf("attempting to run new task, desired count: %d", taskConfig.Count)
 	runTaskResult, err := client.RunTask(context.TODO(), runTaskParams)
 	if err != nil {
-		taskSublogger.Errorf("unable to run new task, desired count: %d: %v", *taskConfig.Count, err)
+		taskSublogger.Errorf("unable to run new task, desired count: %d: %v", taskConfig.Count, err)
 
 		return err
 	}
-	taskSublogger.Infof("running new task, desired count: %d", *taskConfig.Count)
+	taskSublogger.Infof("running new task, desired count: %d", taskConfig.Count)
 
 	// Watch each task on its own asynchronously. The number of tasks depends on
 	// the count that was set. All tasks should be watched.
@@ -216,7 +206,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 		return err
 	}
 
-	taskSublogger.Infof("tasks ran to completion, desired count: %d", *taskConfig.Count)
+	taskSublogger.Infof("tasks ran to completion, desired count: %d", taskConfig.Count)
 
 	return nil
 }
