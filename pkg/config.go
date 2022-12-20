@@ -56,12 +56,3 @@ type VpcConfiguration struct {
 	SecurityGroups []string `mapstructure:"security_groups" validate:"required,min=1,max=5,dive"`
 	Subnets        []string `mapstructure:"subnets" validate:"required,min=1,max=16,dive"`
 }
-
-func (config *Config) ServiceNames() []string {
-	serviceNames := []string{}
-	for _, service := range config.Services {
-		serviceNames = append(serviceNames, service.Name)
-	}
-
-	return serviceNames
-}
