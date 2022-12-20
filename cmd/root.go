@@ -20,7 +20,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/shipatlas/ecs-toolkit/pkg"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
@@ -105,17 +104,7 @@ func initConfig() {
 	}
 
 	log.Debugf("validating %s config file", viper.ConfigFileUsed())
-	validate := validator.New()
-	err := validate.Struct(&toolConfig)
-	if err != nil {
-		if _, ok := err.(*validator.InvalidValidationError); ok {
-			log.Error(strings.ToLower(err.Error()))
-		}
-
-		for _, err := range err.(validator.ValidationErrors) {
-			log.Error(strings.ToLower(err.Error()))
-		}
-
+	if err := toolConfig.Validate(); err != nil {
 		log.Fatalf("unable to validate %s config file", viper.ConfigFileUsed())
 	}
 }

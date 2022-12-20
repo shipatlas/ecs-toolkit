@@ -16,6 +16,14 @@ limitations under the License.
 
 package pkg
 
+import (
+	"strings"
+
+	"github.com/go-playground/validator/v10"
+
+	log "github.com/sirupsen/logrus"
+)
+
 type Config struct {
 	Version string `mapstructure:"version" validate:"required,oneof=v1"`
 	Cluster string `mapstructure:"cluster" validate:"required"`
@@ -55,4 +63,22 @@ type VpcConfiguration struct {
 	AssignPublicIP bool     `mapstructure:"assign_public_ip" validate:"required"`
 	SecurityGroups []string `mapstructure:"security_groups" validate:"required,min=1,max=5,dive"`
 	Subnets        []string `mapstructure:"subnets" validate:"required,min=1,max=16,dive"`
+}
+
+func (config *Config) Validate() error {
+	validate := validator.New()
+	err := validate.Struct(config)
+	if err != nil {
+		if _, ok := err.(*validator.InvalidValidationError); ok {
+			log.Error(strings.ToLower(err.Error()))
+		}
+
+		for _, err := range err.(validator.ValidationErrors) {
+			log.Error(strings.ToLower(err.Error()))
+		}
+
+		return err
+	}
+
+	return nil
 }
