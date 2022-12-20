@@ -76,7 +76,7 @@ func init() {
 
 	// Persistent flags, which, will be global for the application.
 	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.configFile, "config", "c", ".ecs-toolkit.yml", "path to configuration file")
-	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.logLevel, "log-level", "l", "warn", "logging level i.e. "+strings.Join(utils.LogLevels, "|"))
+	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.logLevel, "log-level", "l", "info", "logging level i.e. "+strings.Join(utils.LogLevels, "|"))
 }
 
 // initConfig reads in config file and ENV variables if set.
