@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+* Remove source modification info from `version` command.
+
 ## 0.1.0
 
 First prototype of the idea with deploy feature. Takes inputs as a config file
