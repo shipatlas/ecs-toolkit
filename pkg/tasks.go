@@ -278,9 +278,8 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 				taskSublogger.Error(err)
 
 				return err
-			} else {
-				taskSublogger.Infof("successfully %s", exitMessage)
 			}
+			taskSublogger.Infof("successfully %s", exitMessage)
 
 			break
 		}
