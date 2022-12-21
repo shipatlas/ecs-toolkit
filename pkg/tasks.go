@@ -32,7 +32,6 @@ import (
 
 func (config *Config) DeployTasks(newContainerImageTag *string, stage TaskStage, client *ecs.Client) error {
 	clusterSublogger := log.WithFields(log.Fields{"cluster": config.Cluster})
-	clusterSublogger.Infof("starting rollout of %s-deployment tasks", stage)
 
 	configTasks := []Task{}
 	switch stage {
@@ -50,6 +49,7 @@ func (config *Config) DeployTasks(newContainerImageTag *string, stage TaskStage,
 
 		return nil
 	}
+	clusterSublogger.Infof("starting rollout of %s-deployment tasks", stage)
 
 	// Process each task on its own asynchronously to reduce the amount of time
 	// spent rolling them out. Tasks are short-lived deployment steps that are

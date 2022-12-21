@@ -32,7 +32,6 @@ import (
 
 func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.Client) error {
 	clusterSublogger := log.WithFields(log.Fields{"cluster": config.Cluster})
-	clusterSublogger.Info("starting rollout to services")
 
 	// Get list of services to update from the config file but do not proceed if
 	// there are no services to update.
@@ -42,6 +41,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 
 		return nil
 	}
+	clusterSublogger.Info("starting rollout to services")
 
 	// Process each service on its own asynchronously to reduce the amount of
 	// time spent rolling them out. We should update each service at the same
