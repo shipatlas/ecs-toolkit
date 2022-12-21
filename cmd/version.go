@@ -75,10 +75,6 @@ func (options *versionOptions) complete() {
 	info, _ := debug.ReadBuildInfo()
 
 	for _, setting := range info.Settings {
-		if setting.Key == "vcs.modified" && setting.Value == "true" {
-			versionSourceModified = true
-		}
-
 		if setting.Key == "vcs.revision" {
 			versionSourceRevision = setting.Value
 		}
@@ -86,10 +82,6 @@ func (options *versionOptions) complete() {
 		if setting.Key == "vcs.time" {
 			versionSourceTime, _ = time.Parse(time.RFC3339, setting.Value)
 		}
-	}
-
-	if versionSourceModified {
-		versionSourceRevision = fmt.Sprintf("%s (modified)", versionSourceRevision)
 	}
 
 	if versionTag == "" {
