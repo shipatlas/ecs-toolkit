@@ -133,7 +133,6 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		DesiredCount:                  &service.DesiredCount,
 		EnableECSManagedTags:          &service.EnableECSManagedTags,
 		EnableExecuteCommand:          &service.EnableECSManagedTags,
-		ForceNewDeployment:            serviceConfig.Force,
 		HealthCheckGracePeriodSeconds: service.HealthCheckGracePeriodSeconds,
 		LoadBalancers:                 service.LoadBalancers,
 		NetworkConfiguration:          service.NetworkConfiguration,
@@ -142,6 +141,13 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		PlatformVersion:               service.PlatformVersion,
 		PropagateTags:                 service.PropagateTags,
 		ServiceRegistries:             service.ServiceRegistries,
+	}
+
+	// Set force.
+	if serviceConfig.Force != nil {
+		serviceSublogger.Debug("setting forced deploy")
+
+		updateServiceParams.ForceNewDeployment = *serviceConfig.Force
 	}
 
 	// Set task definition.
