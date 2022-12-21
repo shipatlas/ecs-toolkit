@@ -145,7 +145,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 
 	// Set launch type.
 	if taskConfig.LaunchType != nil {
-		taskSublogger.Debugf("setting launch type to %s", taskConfig.LaunchType)
+		taskSublogger.Debugf("setting launch type to %s", *taskConfig.LaunchType)
 		switch *taskConfig.LaunchType {
 		case "ec2":
 			runTaskParams.LaunchType = types.LaunchTypeEc2
