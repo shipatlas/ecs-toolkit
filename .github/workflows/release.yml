@@ -19,4 +19,4 @@ jobs:
           tag_name: ${{ env.VERSION }}
           release_name: Version ${{ env.VERSION }}
           draft: false
-          prerelease: false
+          prerelease: true
