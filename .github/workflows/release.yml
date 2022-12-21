@@ -22,3 +22,22 @@ jobs:
           release_name: Version ${{ env.VERSION }}
           draft: false
           prerelease: true
+  release-linux-amd64:
+    name: release linux/amd64
+    runs-on: ubuntu-latest
+    needs: github-release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set the version
+        run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
+      - name: Publish Go Binaries
+        uses: wangyoucao577/go-release-action@v1.34
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: linux
+          goarch: amd64
+          ldflags: -X "github.com/shipatlas/ecs-toolkit/cmd.versionTag=${{ env.VERSION }}"
+          extra_files: LICENSE.txt README.md
+          md5sum: true
+          sha256sum: true
