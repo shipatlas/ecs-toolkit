@@ -21,7 +21,7 @@ jobs:
           tag_name: ${{ env.VERSION }}
           release_name: Version ${{ env.VERSION }}
           draft: false
-          prerelease: true
+          prerelease: false
   release-binaries:
     runs-on: ubuntu-latest
     needs: github-release
