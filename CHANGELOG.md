@@ -2,8 +2,8 @@
 
 ## 1.0.0
 
-* First prototype of the idea with deploy feature. Takes inputs as a config file
-  which allows you to:
+First prototype of the idea with deploy feature. Takes inputs as a config file
+which allows you to:
 
 * Define all the services and tasks that make up an application in a concise
   configuration file that's easy to grok at a glance i.e. `.ecs-toolkit.yml`,
