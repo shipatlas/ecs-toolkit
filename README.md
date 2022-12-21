@@ -233,6 +233,11 @@ services: array<object>
     # definition changes.
     # [Optional]
     force: <boolean>
+
+    # Maximum duration in minutes to wait for the service to be stable. Defaults to 15
+    # minutes.
+    # [Optional]
+    max_wait: <integer>
 ```
 
 ### AWS Credentials

@@ -150,6 +150,14 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		updateServiceParams.ForceNewDeployment = *serviceConfig.Force
 	}
 
+	// Set maximum wait time.
+	maxWaitTime := 15 * time.Minute
+	if serviceConfig.MaxWait != nil {
+		serviceSublogger.Debug("setting maximum wait time")
+
+		maxWaitTime = time.Duration(*serviceConfig.MaxWait) * time.Minute
+	}
+
 	// Set task definition.
 	if taskDefinitionUpdated {
 		serviceSublogger.Info("updated task definition, using new one")
@@ -176,7 +184,6 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	// Make sure we wait for the service to be stable.
 	serviceSublogger.Info("checking if service is stable")
 	waiter := ecs.NewServicesStableWaiter(client)
-	maxWaitTime := 15 * time.Minute
 	err = waiter.Wait(context.TODO(), serviceParams, maxWaitTime, func(o *ecs.ServicesStableWaiterOptions) {
 		o.MinDelay = 5 * time.Second
 		o.MaxDelay = 120 * time.Second

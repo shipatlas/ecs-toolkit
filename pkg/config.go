@@ -36,7 +36,8 @@ type Service struct {
 	Name       string   `mapstructure:"name" validate:"required"`
 	Containers []string `mapstructure:"containers" validate:"required,min=1,dive"`
 
-	Force *bool `mapstructure:"force"`
+	Force   *bool  `mapstructure:"force"`
+	MaxWait *int64 `mapstructure:"max_wait" validate:"omitempty,min=5"`
 }
 
 type Task struct {
