@@ -30,15 +30,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Client) error {
+func (config *Config) DeployTasks(newContainerImageTag *string, stage TaskStage, client *ecs.Client) error {
 	clusterSublogger := log.WithFields(log.Fields{"cluster": config.Cluster})
-	clusterSublogger.Info("starting rollout to tasks")
+	clusterSublogger.Infof("starting rollout of %s-deployment tasks", stage)
+
+	configTasks := []Task{}
+	switch stage {
+	case TaskStagePre:
+		configTasks = config.Tasks.Pre
+	case TaskStagePost:
+		configTasks = config.Tasks.Post
+	}
 
 	// Get list of tasks to update from the config file but do not proceed if
 	// there are no tasks to update.
-	numberOfTasks := len(config.Tasks)
+	numberOfTasks := len(configTasks)
 	if numberOfTasks == 0 {
-		clusterSublogger.Warn("skipping rollout to tasks, none found")
+		clusterSublogger.Warnf("skipping rollout of %s-deployment tasks, none found", stage)
 
 		return nil
 	}
@@ -50,7 +58,7 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 	taskDeployErrors := make(chan error, numberOfTasks)
 	wg := sync.WaitGroup{}
 	wg.Add(numberOfTasks)
-	for index := range config.Tasks {
+	for index := range configTasks {
 		go func(taskConfig *Task) {
 			defer wg.Done()
 
@@ -58,7 +66,7 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 			if err != nil {
 				taskDeployErrors <- err
 			}
-		}(&config.Tasks[index])
+		}(&configTasks[index])
 	}
 	wg.Wait()
 	close(taskDeployErrors)
@@ -68,12 +76,12 @@ func (config *Config) DeployTasks(newContainerImageTag *string, client *ecs.Clie
 	clusterSublogger.Infof("tasks report - total: %d, successful: %d, failed: %d", numberOfTasks, completedCount, failedCount)
 
 	if failedCount > 0 {
-		err := fmt.Errorf("unable to deploy all tasks")
+		err := fmt.Errorf("unable to deploy all %s-deployment tasks", stage)
 
 		return err
 	}
 
-	clusterSublogger.Info("completed rollout to tasks")
+	clusterSublogger.Infof("completed rollout of %s-deployment tasks", stage)
 
 	return nil
 }

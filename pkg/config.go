@@ -28,8 +28,8 @@ type Config struct {
 	Version string `mapstructure:"version" validate:"required,oneof=v1"`
 	Cluster string `mapstructure:"cluster" validate:"required"`
 
-	Services []Service `mapstructure:"services" validate:"required,dive"`
-	Tasks    []Task    `mapstructure:"tasks" validate:"required,dive"`
+	Services []Service `mapstructure:"services" validate:"omitempty,dive"`
+	Tasks    Tasks     `mapstructure:"tasks" validate:"omitempty,dive"`
 }
 
 type Service struct {
@@ -49,6 +49,13 @@ type Task struct {
 	NetworkConfiguration       *NetworkConfiguration      `mapstructure:"network_configuration" validate:"omitempty,dive"`
 }
 
+type Tasks struct {
+	Pre  []Task `mapstructure:"pre" validate:"omitempty,dive"`
+	Post []Task `mapstructure:"post" validate:"omitempty,dive"`
+}
+
+type TaskStage string
+
 type CapacityProviderStrategy struct {
 	CapacityProvider string `mapstructure:"capacity_provider" validate:"required"`
 	Base             int32  `mapstructure:"base"`
@@ -64,6 +71,11 @@ type VpcConfiguration struct {
 	SecurityGroups []string `mapstructure:"security_groups" validate:"required,min=1,max=5,dive"`
 	Subnets        []string `mapstructure:"subnets" validate:"required,min=1,max=16,dive"`
 }
+
+const (
+	TaskStagePost TaskStage = "post"
+	TaskStagePre  TaskStage = "pre"
+)
 
 func (config *Config) Validate() error {
 	validate := validator.New()

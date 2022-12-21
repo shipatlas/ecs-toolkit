@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/smithy-go/logging"
+	"github.com/shipatlas/ecs-toolkit/pkg"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
 
@@ -29,8 +30,10 @@ import (
 )
 
 type deployOptions struct {
-	imageTag  string
-	skipTasks bool
+	imageTag      string
+	skipTasks     bool
+	skipTasksPre  bool
+	skipTasksPost bool
 }
 
 var (
@@ -42,8 +45,14 @@ var (
 		ecs-toolkit deploy --image-tag=5a853f72
 		
 		# Deploy new revision of an application but only update the services 
-		# specified in the config, skips tasks
-		ecs-toolkit deploy --image-tag=5a853f72 --skip-tasks`)
+		# specified in the config, skips pre and post deployment tasks
+		ecs-toolkit deploy --image-tag=5a853f72 --skip-tasks
+		
+		# Deploy new revision of an application but skip only pre-deployment tasks
+		ecs-toolkit deploy --image-tag=5a853f72 --skip-pre-tasks
+		
+		# Deploy new revision of an application but skip only post-deployment tasks
+		ecs-toolkit deploy --image-tag=5a853f72 --skip-post-tasks`)
 
 	deployCmdOptions = &deployOptions{}
 )
@@ -70,7 +79,9 @@ func init() {
 
 	// Local flags, which, will be global for the application.
 	deployCmd.Flags().StringVarP(&deployCmdOptions.imageTag, "image-tag", "t", "", "image tag to update the container images to")
-	deployCmd.Flags().BoolVar(&deployCmdOptions.skipTasks, "skip-tasks", false, "skips tasks, limiting deployment to services")
+	deployCmd.Flags().BoolVar(&deployCmdOptions.skipTasks, "skip-tasks", false, "skips both pre-deployment & post-deployment tasks")
+	deployCmd.Flags().BoolVar(&deployCmdOptions.skipTasksPre, "skip-pre-tasks", false, "skip only pre-deployment tasks")
+	deployCmd.Flags().BoolVar(&deployCmdOptions.skipTasksPost, "skip-post-tasks", false, "skip only post-deployment tasks")
 
 	// Configure required flags, applying to this specific command.
 	deployCmd.MarkFlagRequired("image-tag")
@@ -98,15 +109,22 @@ func (options *deployOptions) run() {
 	}
 	client := ecs.NewFromConfig(awsCfg)
 
-	if !options.skipTasks {
-		err = toolConfig.DeployTasks(&options.imageTag, client)
+	if !options.skipTasks && !options.skipTasksPre {
+		err = toolConfig.DeployTasks(&options.imageTag, pkg.TaskStagePre, client)
 		if err != nil {
-			log.Fatal("error deploying tasks, exiting!")
+			log.Fatal("error deploying pre-deployment tasks, exiting!")
 		}
 	}
 
 	err = toolConfig.DeployServices(&options.imageTag, client)
 	if err != nil {
 		log.Fatal("error deploying services, exiting!")
+	}
+
+	if !options.skipTasks && !options.skipTasksPost {
+		err = toolConfig.DeployTasks(&options.imageTag, pkg.TaskStagePost, client)
+		if err != nil {
+			log.Fatal("error deploying post-deployment tasks, exiting!")
+		}
 	}
 }
