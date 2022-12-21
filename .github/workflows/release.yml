@@ -46,8 +46,8 @@ jobs:
         uses: wangyoucao577/go-release-action@v1.34
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: linux
-          goarch: amd64
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
           ldflags: -X "github.com/shipatlas/ecs-toolkit/cmd.versionTag=${{ env.VERSION }}"
           extra_files: LICENSE.txt README.md
           md5sum: true
