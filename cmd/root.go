@@ -20,7 +20,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/shipatlas/ecs-toolkit/pkg"
 	"github.com/shipatlas/ecs-toolkit/utils"
 	"github.com/spf13/cobra"
@@ -76,7 +75,7 @@ func init() {
 
 	// Persistent flags, which, will be global for the application.
 	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.configFile, "config", "c", ".ecs-toolkit.yml", "path to configuration file")
-	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.logLevel, "log-level", "l", "warn", "logging level i.e. "+strings.Join(utils.LogLevels, "|"))
+	rootCmd.PersistentFlags().StringVarP(&rootCmdOptions.logLevel, "log-level", "l", "info", "logging level i.e. "+strings.Join(utils.LogLevels, "|"))
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -105,17 +104,7 @@ func initConfig() {
 	}
 
 	log.Debugf("validating %s config file", viper.ConfigFileUsed())
-	validate := validator.New()
-	err := validate.Struct(&toolConfig)
-	if err != nil {
-		if _, ok := err.(*validator.InvalidValidationError); ok {
-			log.Error(strings.ToLower(err.Error()))
-		}
-
-		for _, err := range err.(validator.ValidationErrors) {
-			log.Error(strings.ToLower(err.Error()))
-		}
-
+	if err := toolConfig.Validate(); err != nil {
 		log.Fatalf("unable to validate %s config file", viper.ConfigFileUsed())
 	}
 }

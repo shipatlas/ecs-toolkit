@@ -16,51 +16,82 @@ limitations under the License.
 
 package pkg
 
+import (
+	"strings"
+
+	"github.com/go-playground/validator/v10"
+
+	log "github.com/sirupsen/logrus"
+)
+
 type Config struct {
-	Version  *string    `mapstructure:"version" validate:"required"`
-	Cluster  *string    `mapstructure:"cluster" validate:"required"`
-	Services []*Service `mapstructure:"services" validate:"dive"`
-	Tasks    []*Task    `mapstructure:"tasks" validate:"dive"`
+	Version string `mapstructure:"version" validate:"required,oneof=v1"`
+	Cluster string `mapstructure:"cluster" validate:"required"`
+
+	Services []Service `mapstructure:"services" validate:"omitempty,dive"`
+	Tasks    Tasks     `mapstructure:"tasks" validate:"omitempty,dive"`
 }
 
 type Service struct {
-	Name       *string   `mapstructure:"name" validate:"required"`
-	Containers []*string `mapstructure:"containers" validate:"required,min=1,dive"`
-	Force      *bool     `mapstructure:"force"`
+	Name       string   `mapstructure:"name" validate:"required"`
+	Containers []string `mapstructure:"containers" validate:"required,min=1,dive"`
+
+	Force   *bool  `mapstructure:"force"`
+	MaxWait *int64 `mapstructure:"max_wait" validate:"omitempty,min=5"`
 }
 
 type Task struct {
-	Family     *string   `mapstructure:"family" validate:"required"`
-	Containers []*string `mapstructure:"containers" validate:"required,min=1,dive"`
-	Force      *bool     `mapstructure:"force"`
+	Family     string   `mapstructure:"family" validate:"required"`
+	Containers []string `mapstructure:"containers" validate:"required,min=1,dive"`
+	Count      int32    `mapstructure:"count" validate:"required,min=1,max=10"`
 
-	CapacityProviderStrategies []*CapacityProviderStrategy `mapstructure:"capacity_provider_strategies"`
-	Count                      *int32                      `mapstructure:"count" validate:"required"`
-	LaunchType                 *string                     `mapstructure:"launch_type" validate:"omitempty,oneof=ec2 fargate external"`
-	NetworkConfiguration       *NetworkConfiguration       `mapstructure:"network_configuration"`
+	CapacityProviderStrategies []CapacityProviderStrategy `mapstructure:"capacity_provider_strategies" validate:"omitempty,max=6,dive"`
+	LaunchType                 *string                    `mapstructure:"launch_type" validate:"omitempty,oneof=ec2 fargate external"`
+	NetworkConfiguration       *NetworkConfiguration      `mapstructure:"network_configuration" validate:"omitempty,dive"`
 }
 
+type Tasks struct {
+	Pre  []Task `mapstructure:"pre" validate:"omitempty,dive"`
+	Post []Task `mapstructure:"post" validate:"omitempty,dive"`
+}
+
+type TaskStage string
+
 type CapacityProviderStrategy struct {
-	CapacityProvider *string `mapstructure:"capacity_provider" validate:"required"`
-	Base             *int32  `mapstructure:"base" validate:"required"`
-	Weight           *int32  `mapstructure:"weight" validate:"required"`
+	CapacityProvider string `mapstructure:"capacity_provider" validate:"required"`
+	Base             int32  `mapstructure:"base"`
+	Weight           int32  `mapstructure:"weight"`
 }
 
 type NetworkConfiguration struct {
-	VpcConfiguration *VpcConfiguration `mapstructure:"vpc_configuration" validate:"required,dive"`
+	VpcConfiguration VpcConfiguration `mapstructure:"vpc_configuration" validate:"required,dive"`
 }
 
 type VpcConfiguration struct {
-	AssignPublicIP *bool     `mapstructure:"assign_public_ip" validate:"required"`
-	SecurityGroups []*string `mapstructure:"security_groups" validate:"required,min=1"`
-	Subnets        []*string `mapstructure:"subnets" validate:"required,min=1"`
+	AssignPublicIP bool     `mapstructure:"assign_public_ip" validate:"required"`
+	SecurityGroups []string `mapstructure:"security_groups" validate:"required,min=1,max=5,dive"`
+	Subnets        []string `mapstructure:"subnets" validate:"required,min=1,max=16,dive"`
 }
 
-func (config *Config) ServiceNames() []string {
-	serviceNames := []string{}
-	for _, service := range config.Services {
-		serviceNames = append(serviceNames, *service.Name)
+const (
+	TaskStagePost TaskStage = "post"
+	TaskStagePre  TaskStage = "pre"
+)
+
+func (config *Config) Validate() error {
+	validate := validator.New()
+	err := validate.Struct(config)
+	if err != nil {
+		if _, ok := err.(*validator.InvalidValidationError); ok {
+			log.Error(strings.ToLower(err.Error()))
+		}
+
+		for _, err := range err.(validator.ValidationErrors) {
+			log.Error(strings.ToLower(err.Error()))
+		}
+
+		return err
 	}
 
-	return serviceNames
+	return nil
 }

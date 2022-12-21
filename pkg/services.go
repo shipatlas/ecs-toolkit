@@ -31,8 +31,7 @@ import (
 )
 
 func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.Client) error {
-	clusterSublogger := log.WithFields(log.Fields{"cluster": *config.Cluster})
-	clusterSublogger.Info("starting rollout to services")
+	clusterSublogger := log.WithFields(log.Fields{"cluster": config.Cluster})
 
 	// Get list of services to update from the config file but do not proceed if
 	// there are no services to update.
@@ -42,6 +41,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 
 		return nil
 	}
+	clusterSublogger.Info("starting rollout to services")
 
 	// Process each service on its own asynchronously to reduce the amount of
 	// time spent rolling them out. We should update each service at the same
@@ -53,11 +53,11 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 		go func(serviceConfig *Service) {
 			defer wg.Done()
 
-			err := deployService(config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger)
+			err := deployService(&config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger)
 			if err != nil {
 				serviceDeployErrors <- err
 			}
-		}(config.Services[index])
+		}(&config.Services[index])
 	}
 	wg.Wait()
 	close(serviceDeployErrors)
@@ -79,14 +79,14 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 
 func deployService(cluster *string, serviceConfig *Service, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) error {
 	// Set up new logger with the service name.
-	serviceSublogger := logger.WithField("service", *serviceConfig.Name)
+	serviceSublogger := logger.WithField("service", serviceConfig.Name)
 
 	// Fetch full profile of the service so that later we can reference its
 	// attributes i.e. task definitions.
 	serviceSublogger.Debug("fetching service profile")
 	serviceParams := &ecs.DescribeServicesInput{
 		Cluster:  cluster,
-		Services: []string{*serviceConfig.Name},
+		Services: []string{serviceConfig.Name},
 	}
 	serviceResult, err := client.DescribeServices(context.TODO(), serviceParams)
 	if err != nil {
@@ -108,7 +108,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	// Store information on which containers should be updated.
 	taskContainerUpdateable := make(map[string]bool)
 	for _, containerName := range serviceConfig.Containers {
-		taskContainerUpdateable[*containerName] = true
+		taskContainerUpdateable[containerName] = true
 	}
 
 	// Generate new task definition with the required changes.
@@ -133,7 +133,6 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		DesiredCount:                  &service.DesiredCount,
 		EnableECSManagedTags:          &service.EnableECSManagedTags,
 		EnableExecuteCommand:          &service.EnableECSManagedTags,
-		ForceNewDeployment:            *serviceConfig.Force,
 		HealthCheckGracePeriodSeconds: service.HealthCheckGracePeriodSeconds,
 		LoadBalancers:                 service.LoadBalancers,
 		NetworkConfiguration:          service.NetworkConfiguration,
@@ -144,13 +143,28 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		ServiceRegistries:             service.ServiceRegistries,
 	}
 
+	// Set force.
+	if serviceConfig.Force != nil {
+		serviceSublogger.Debug("setting forced deploy")
+
+		updateServiceParams.ForceNewDeployment = *serviceConfig.Force
+	}
+
+	// Set maximum wait time.
+	maxWaitTime := 15 * time.Minute
+	if serviceConfig.MaxWait != nil {
+		serviceSublogger.Debug("setting maximum wait time")
+
+		maxWaitTime = time.Duration(*serviceConfig.MaxWait) * time.Minute
+	}
+
 	// Set task definition.
 	if taskDefinitionUpdated {
 		serviceSublogger.Info("updated task definition, using new one")
 		updateServiceParams.TaskDefinition = newTaskDefinition.TaskDefinitionArn
 	} else {
 		serviceSublogger.Info("no changes to previous task definition, using latest")
-		updateServiceParams.TaskDefinition = serviceConfig.Name
+		updateServiceParams.TaskDefinition = &serviceConfig.Name
 	}
 
 	// Update service to reflect changes.
@@ -170,7 +184,6 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	// Make sure we wait for the service to be stable.
 	serviceSublogger.Info("checking if service is stable")
 	waiter := ecs.NewServicesStableWaiter(client)
-	maxWaitTime := 15 * time.Minute
 	err = waiter.Wait(context.TODO(), serviceParams, maxWaitTime, func(o *ecs.ServicesStableWaiterOptions) {
 		o.MinDelay = 5 * time.Second
 		o.MaxDelay = 120 * time.Second
