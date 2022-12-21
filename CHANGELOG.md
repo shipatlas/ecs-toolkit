@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0
+## 0.1.0
 
 First prototype of the idea with deploy feature. Takes inputs as a config file
 which allows you to:
