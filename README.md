@@ -48,7 +48,8 @@ Takes inputs as a config file which allows you to:
 
 As part of the deployment process, it:
 
-* Registers a new task definition with a new image.
+* Registers a new task definition with a new image cloning all the concurrent
+  configuration from the old one to the new one.
 * Runs new tasks and update services with the new task definition.
 * Runs the tasks and services asynchronously for faster deployments.
 * Watches a service until it's stable or a task until it's stopped.
@@ -219,7 +220,8 @@ tasks: <object>
 
 ```yaml
 services: array<object>
-    # The name of the service.
+    # The name of the service. Assumed convention is that the service
+    # name matches the task definition's family name.
     # [Required]
   - name: <string>
 
@@ -326,34 +328,35 @@ command:
 $ ecs-toolkit deploy --image-tag=49779134ca1dcef21f0b5123d3d5c2f4f47da650
 INFO[0000] using config file: .ecs-toolkit.yml          
 INFO[0000] reading .ecs-toolkit.yml config file         
-INFO[0000] starting rollout to tasks                     cluster=example
+INFO[0000] starting rollout of pre-deployment tasks      cluster=example
 INFO[0001] building new task definition from app-database-migrate:24  cluster=example task=app-database-migrate
 WARN[0001] skipping container image tag update, no changes  cluster=example container=rails task=app-database-migrate
 WARN[0001] skipping registering new task definition, no changes  cluster=example task=app-database-migrate
 INFO[0001] preparing running task parameters             cluster=example task=app-database-migrate
 INFO[0001] no changes to previous task definition, using latest  cluster=example task=app-database-migrate
 INFO[0001] running new task, desired count: 1            cluster=example task=app-database-migrate
-INFO[0001] watching task [1] ... last status: pending, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=85d76f5ffddf42e2bbeabd787c36f097
-INFO[0004] watching task [1] ... last status: running, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=85d76f5ffddf42e2bbeabd787c36f097
-INFO[0007] watching task [1] ... last status: running, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=85d76f5ffddf42e2bbeabd787c36f097
-INFO[0010] watching task [1] ... last status: running, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=85d76f5ffddf42e2bbeabd787c36f097
-INFO[0013] watching task [1] ... last status: stopped, desired status: stopped, health: unknown  cluster=example task=app-database-migrate task-id=85d76f5ffddf42e2bbeabd787c36f097
-INFO[0013] successfully stopped task [1], reason: essential container in task exited  cluster=example task=app-database-migrate task-id=85d76f5ffddf42e2bbeabd787c36f097
+INFO[0001] watching task [1] ... last status: pending, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=87356f4b0da94232b39e3527781d55a2
+INFO[0004] watching task [1] ... last status: running, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=87356f4b0da94232b39e3527781d55a2
+INFO[0007] watching task [1] ... last status: running, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=87356f4b0da94232b39e3527781d55a2
+INFO[0010] watching task [1] ... last status: running, desired status: running, health: unknown  cluster=example task=app-database-migrate task-id=87356f4b0da94232b39e3527781d55a2
+INFO[0013] watching task [1] ... last status: stopped, desired status: stopped, health: unknown  cluster=example task=app-database-migrate task-id=87356f4b0da94232b39e3527781d55a2
+INFO[0013] successfully stopped task [1], reason: essential container in task exited  cluster=example task=app-database-migrate task-id=87356f4b0da94232b39e3527781d55a2
 INFO[0013] tasks ran to completion, desired count: 1     cluster=example task=app-database-migrate
 INFO[0013] tasks report - total: 1, successful: 1, failed: 0  cluster=example
-INFO[0013] completed rollout to tasks                    cluster=example
+INFO[0013] completed rollout of pre-deployment tasks     cluster=example
 INFO[0013] starting rollout to services                  cluster=example
 INFO[0014] building new task definition from app-web-server:103  cluster=example service=app-web-server
 WARN[0014] skipping container image tag update, no changes  cluster=example container=rails service=app-web-server
 WARN[0014] skipping registering new task definition, no changes  cluster=example service=app-web-server
 INFO[0014] no changes to previous task definition, using latest  cluster=example service=app-web-server
-INFO[0016] updated service successfully                  cluster=example service=app-web-server
-INFO[0016] watch service rollout progress                cluster=example service=app-web-server
-INFO[0017] watching ... service: active, deployment: primary, rollout: 1/1 (0 pending)  cluster=example deployment-id=ecs-svc/6300252591410027253 service=app-web-server
-INFO[0017] checking if service is stable                 cluster=example service=app-web-server
-INFO[0018] service is stable                             cluster=example service=app-web-server
-INFO[0018] services report - total: 1, successful: 1, failed: 0  cluster=example
-INFO[0018] completed rollout to services                 cluster=example
+INFO[0015] updated service successfully                  cluster=example service=app-web-server
+INFO[0015] watch service rollout progress                cluster=example service=app-web-server
+INFO[0015] watching ... service: active, deployment: primary, rollout: 1/1 (0 pending)  cluster=example deployment-id=ecs-svc/6300252591410027253 service=app-web-server
+INFO[0015] checking if service is stable                 cluster=example service=app-web-server
+INFO[0016] service is stable                             cluster=example service=app-web-server
+INFO[0016] services report - total: 1, successful: 1, failed: 0  cluster=example
+INFO[0016] completed rollout to services                 cluster=example
+WARN[0016] skipping rollout of post-deployment tasks, none found  cluster=example
 ```
 
 For more information see `ecs-toolkit --help` or `ecs-toolkit <command> --help`.
