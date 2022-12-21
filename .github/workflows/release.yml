@@ -52,4 +52,4 @@ jobs:
           extra_files: LICENSE.txt README.md
           md5sum: true
           sha256sum: true
-          asset_name: ${BINARY_NAME}-${RELEASE_TAG}-${{ matrix.goos }}-${{ matrix.goarch }}
+          asset_name: ecs-toolkit-${{ env.VERSION }}-${{ matrix.goos }}-${{ matrix.goarch }}
