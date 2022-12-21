@@ -90,10 +90,10 @@ func initConfig() {
 		viper.SetConfigType("yml")
 		viper.SetConfigName(".ecs-toolkit")
 	}
-	log.Infof("using config file: %s", rootCmdOptions.configFile)
+	log.Debugf("using config file: %s", rootCmdOptions.configFile)
 
 	// If a config file is found, read it in.
-	log.Infof("reading %s config file", viper.ConfigFileUsed())
+	log.Debugf("reading %s config file", viper.ConfigFileUsed())
 	if err := viper.ReadInConfig(); err != nil {
 		log.Fatalf("unable to read %s config file: %v", viper.ConfigFileUsed(), err)
 	}
