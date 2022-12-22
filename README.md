@@ -69,6 +69,33 @@ It can also:
 If there's a feature that you would like considered, [please file an
 issue][new-issue] with your request.
 
+## Installation
+
+Download the binary archive for your platform, and install the binary on your
+`PATH`. You can use the provided MD5 or SHA256 hash to verify the integrity of
+your download:
+
+* Linux (amd64):
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-darwin-amd64.tar.gz
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-darwin-amd64.tar.gz.md5
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-darwin-amd64.tar.gz.sha256
+* Linux (arm64):
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-darwin-arm64.tar.gz
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-darwin-arm64.tar.gz.md5
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-darwin-arm64.tar.gz.sha256
+* Linux (amd64):
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-linux-amd64.tar.gz
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-linux-amd64.tar.gz.md5
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-linux-amd64.tar.gz.sha256
+* Linux (arm64):
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-linux-arm64.tar.gz
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-linux-arm64.tar.gz.md5
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-linux-arm64.tar.gz.sha256
+* Windows (amd64):
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-windows-amd64.zip
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-windows-amd64.zip.md5
+  * https://github.com/shipatlas/ecs-toolkit/releases/download/{{version}}/ecs-toolkit-{{version}}-windows-amd64.zip.sha256
+
 ## Configuration
 
 ### Application Config File
