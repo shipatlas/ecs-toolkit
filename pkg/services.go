@@ -139,7 +139,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		DeploymentConfiguration:       service.DeploymentConfiguration,
 		DesiredCount:                  &service.DesiredCount,
 		EnableECSManagedTags:          &service.EnableECSManagedTags,
-		EnableExecuteCommand:          &service.EnableECSManagedTags,
+		EnableExecuteCommand:          &service.EnableExecuteCommand,
 		HealthCheckGracePeriodSeconds: service.HealthCheckGracePeriodSeconds,
 		LoadBalancers:                 service.LoadBalancers,
 		NetworkConfiguration:          service.NetworkConfiguration,
