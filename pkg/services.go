@@ -43,28 +43,35 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	}
 	clusterSublogger.Info("starting rollout to services")
 
-	// Process each service on its own asynchronously to reduce the amount of
-	// time spent rolling them out. We should update each service at the same
-	// time.
-	serviceDeployErrors := make(chan error, numberOfServices)
-	wg := sync.WaitGroup{}
-	wg.Add(numberOfServices)
+	// Process each service on in parallel to reduce the amount of time spent
+	// rolling them out and evaluate the status to provide a summary report
+	// after.
+	var (
+		failedCount  = 0
+		skippedCount = 0
+		wg           = sync.WaitGroup{}
+	)
 	for index := range config.Services {
+		wg.Add(1)
+
 		go func(serviceConfig *Service) {
 			defer wg.Done()
 
-			err := deployService(&config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger)
+			status, err := deployService(&config.Cluster, serviceConfig, newContainerImageTag, client, clusterSublogger)
 			if err != nil {
-				serviceDeployErrors <- err
+				switch status {
+				case FailedStatus:
+					failedCount = failedCount + 1
+				case SkippedStatus:
+					skippedCount = skippedCount + 1
+				}
 			}
 		}(&config.Services[index])
 	}
 	wg.Wait()
-	close(serviceDeployErrors)
 
-	failedCount := len(serviceDeployErrors)
-	completedCount := numberOfServices - len(serviceDeployErrors)
-	clusterSublogger.Infof("services report - total: %d, successful: %d, failed: %d", numberOfServices, completedCount, failedCount)
+	successfulCount := numberOfServices - (failedCount + skippedCount)
+	clusterSublogger.Infof("services report - total: %d, successful: %d, skipped: %d, failed: %d", numberOfServices, successfulCount, skippedCount, failedCount)
 
 	if failedCount > 0 {
 		err := fmt.Errorf("unable to deploy all services")
@@ -77,7 +84,7 @@ func (config *Config) DeployServices(newContainerImageTag *string, client *ecs.C
 	return nil
 }
 
-func deployService(cluster *string, serviceConfig *Service, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) error {
+func deployService(cluster *string, serviceConfig *Service, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) (Status, error) {
 	// Set up new logger with the service name.
 	serviceSublogger := logger.WithField("service", serviceConfig.Name)
 
@@ -92,7 +99,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	if err != nil {
 		serviceSublogger.Errorf("unable to fetch service profile: %v", err)
 
-		return err
+		return FailedStatus, err
 	}
 
 	// If the service is not found then stop deploying to the service. We should
@@ -101,7 +108,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 		err = errors.New("skipping deploy, service not found")
 		serviceSublogger.Error(err)
 
-		return err
+		return SkippedStatus, err
 	}
 	service := serviceResult.Services[0]
 
@@ -121,7 +128,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	if err != nil {
 		serviceSublogger.Errorf("error generating task definition")
 
-		return err
+		return FailedStatus, err
 	}
 
 	// Prepare parameters for service.
@@ -173,7 +180,7 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	if err != nil {
 		serviceSublogger.Errorf("unable to update service: %v", err)
 
-		return err
+		return FailedStatus, err
 	}
 	serviceSublogger.Info("updated service successfully")
 
@@ -192,13 +199,13 @@ func deployService(cluster *string, serviceConfig *Service, newContainerImageTag
 	if err != nil {
 		serviceSublogger.Errorf("unable to check if service is stable: %v", err)
 
-		return err
+		return FailedStatus, err
 
 	}
 
 	serviceSublogger.Info("service is stable")
 
-	return nil
+	return SucceededStatus, nil
 }
 
 func watchService(cluster *string, service *types.Service, client *ecs.Client, serviceSublogger *log.Entry) {

@@ -52,29 +52,39 @@ func (config *Config) DeployTasks(newContainerImageTag *string, stage TaskStage,
 	}
 	clusterSublogger.Infof("starting rollout of %s-deployment tasks", stage)
 
-	// Process each task on its own asynchronously to reduce the amount of time
-	// spent rolling them out. Tasks are short-lived deployment steps that are
-	// pre-requisites to the deployment. It's worth noting that all tasks must
-	// complete before the deployment starts.
-	taskDeployErrors := make(chan error, numberOfTasks)
-	wg := sync.WaitGroup{}
-	wg.Add(numberOfTasks)
+	// Process each service on in parallel to reduce the amount of time spent
+	// rolling them out and evaluate the status to provide a summary report
+	// after. Tasks are short-lived deployment steps that are pre-requisites to
+	// the deployment. It's worth noting that all tasks must complete before the
+	// deployment starts.
+	var (
+		failedCount  = 0
+		skippedCount = 0
+		wg           = sync.WaitGroup{}
+	)
 	for index := range configTasks {
+		wg.Add(1)
+
 		go func(taskConfig *Task) {
 			defer wg.Done()
 
-			err := deployTask(&config.Cluster, taskConfig, newContainerImageTag, client, clusterSublogger)
+			status, err := deployTask(&config.Cluster, taskConfig, newContainerImageTag, client, clusterSublogger)
 			if err != nil {
-				taskDeployErrors <- err
+				if err != nil {
+					switch status {
+					case FailedStatus:
+						failedCount = failedCount + 1
+					case SkippedStatus:
+						skippedCount = skippedCount + 1
+					}
+				}
 			}
 		}(&configTasks[index])
 	}
 	wg.Wait()
-	close(taskDeployErrors)
 
-	failedCount := len(taskDeployErrors)
-	completedCount := numberOfTasks - len(taskDeployErrors)
-	clusterSublogger.Infof("tasks report - total: %d, successful: %d, failed: %d", numberOfTasks, completedCount, failedCount)
+	successfulCount := numberOfTasks - (failedCount + skippedCount)
+	clusterSublogger.Infof("tasks report - total: %d, successful: %d, skipped: %d, failed: %d", numberOfTasks, successfulCount, skippedCount, failedCount)
 
 	if failedCount > 0 {
 		err := fmt.Errorf("unable to deploy all %s-deployment tasks", stage)
@@ -87,7 +97,7 @@ func (config *Config) DeployTasks(newContainerImageTag *string, stage TaskStage,
 	return nil
 }
 
-func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) error {
+func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string, client *ecs.Client, logger *log.Entry) (Status, error) {
 	// Set up new logger with the task family.
 	taskSublogger := logger.WithField("task", taskConfig.Family)
 
@@ -107,7 +117,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	if err != nil {
 		taskSublogger.Errorf("error generating task definition")
 
-		return err
+		return FailedStatus, err
 	}
 
 	// Prepare parameters for task.
@@ -183,7 +193,7 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	if err != nil {
 		taskSublogger.Errorf("unable to run new task, desired count: %d: %v", taskConfig.Count, err)
 
-		return err
+		return FailedStatus, err
 	}
 	taskSublogger.Infof("running new task, desired count: %d", taskConfig.Count)
 
@@ -212,12 +222,12 @@ func deployTask(cluster *string, taskConfig *Task, newContainerImageTag *string,
 	if failedCount > 0 {
 		err := fmt.Errorf("unable to run all tasks")
 
-		return err
+		return FailedStatus, err
 	}
 
 	taskSublogger.Infof("tasks ran to completion, desired count: %d", taskConfig.Count)
 
-	return nil
+	return SucceededStatus, nil
 }
 
 func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Client, logger *log.Entry) error {
