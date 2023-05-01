@@ -1,8 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+* Fix runtime panic when watching task - https://github.com/shipatlas/ecs-toolkit/pull/30.
+
 ## 0.2.0
 
-* Remove source modification info from `version` command.
+* Remove source modification info from `version` command - https://github.com/shipatlas/ecs-toolkit/pull/28.
 
 ## 0.1.0
 

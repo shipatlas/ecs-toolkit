@@ -41,7 +41,6 @@ var (
 		ecs-toolkit version --short`)
 
 	versionCmdOptions     = &versionOptions{}
-	versionSourceModified bool
 	versionSourceRevision string
 	versionSourceTime     time.Time
 	versionTag            string
