@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -259,17 +260,29 @@ func watchTask(cluster *string, taskNo *int, task *types.Task, client *ecs.Clien
 		if *task.LastStatus == "STOPPED" {
 			nonZeroExit := false
 			for _, container := range task.Containers {
-				containerReason := "none"
+				var (
+					containerExitCode = "none"
+					containerName     = "unknown"
+					containerReason   = "none"
+				)
 
-				if container.ExitCode != nil && *container.ExitCode != 0 {
-					nonZeroExit = true
+				if container.ExitCode != nil {
+					containerExitCode = strconv.Itoa(int(*container.ExitCode))
+
+					if *container.ExitCode != 0 {
+						nonZeroExit = true
+					}
+				}
+
+				if container.Name != nil {
+					containerName = strings.ToLower(*container.Name)
 				}
 
 				if container.Reason != nil {
 					containerReason = strings.ToLower(*container.Reason)
 				}
 
-				taskSublogger.Debugf("stopped task [%d] container [%s] ... exit code: %d, reason: %s", *taskNo, *container.Name, *container.ExitCode, containerReason)
+				taskSublogger.Debugf("stopped task [%d] container [%s] ... exit code: %s, reason: %s", *taskNo, containerName, containerExitCode, containerReason)
 			}
 
 			exitMessage := fmt.Sprintf("stopped task [%d], reason: %s", *taskNo, strings.ToLower(string(*task.StoppedReason)))
