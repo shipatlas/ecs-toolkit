@@ -1,12 +1,26 @@
 # Changelog
 
+## 0.2.2
+
+* **Fixes**
+  * Fix error deploying service exit when services are skipped.
+  * Fix incorrect EnableExecuteCommand setting update.
+* **Pull Requests**
+  * https://github.com/shipatlas/ecs-toolkit/pull/31
+
 ## 0.2.1
 
-* Fix runtime panic when watching task - https://github.com/shipatlas/ecs-toolkit/pull/30.
+* **Fixes**
+  * Fix runtime panic when watching task.
+* **Pull Requests**
+  * https://github.com/shipatlas/ecs-toolkit/pull/30
 
 ## 0.2.0
 
-* Remove source modification info from `version` command - https://github.com/shipatlas/ecs-toolkit/pull/28.
+* **Changes**
+  * Remove source modification info from `version` command.
+* **Pull Requests**
+  * https://github.com/shipatlas/ecs-toolkit/pull/28
 
 ## 0.1.0
 
